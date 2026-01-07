@@ -1,0 +1,18 @@
+# Visual Studio
+.vs/
+
+# Build output
+bin/
+obj/
+out/
+build/
+
+# User files
+*.user
+*.suo
+*.VC.db
+*.VC.opendb
+
+# OS junk
+.DS_Store
+Thumbs.db

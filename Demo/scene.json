@@ -1,0 +1,172 @@
+{
+    "entities": [
+        {
+            "id": 0,
+            "name": "Entity 0",
+            "transform": {
+                "position": [
+                    -7.0,
+                    0.0,
+                    -7.0
+                ],
+                "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                ],
+                "scale": [
+                    1.0,
+                    1.0,
+                    1.0
+                ]
+            }
+        },
+        {
+            "id": 1,
+            "name": "Entity 1",
+            "transform": {
+                "position": [
+                    -5.0,
+                    0.0,
+                    -5.0
+                ],
+                "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                ],
+                "scale": [
+                    1.0,
+                    1.0,
+                    1.0
+                ]
+            }
+        },
+        {
+            "id": 2,
+            "name": "Entity 2",
+            "transform": {
+                "position": [
+                    -3.0,
+                    0.0,
+                    -3.0
+                ],
+                "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                ],
+                "scale": [
+                    1.0,
+                    1.0,
+                    1.0
+                ]
+            }
+        },
+        {
+            "id": 3,
+            "name": "Entity 3",
+            "transform": {
+                "position": [
+                    -1.0,
+                    0.0,
+                    -1.0
+                ],
+                "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                ],
+                "scale": [
+                    1.0,
+                    1.0,
+                    1.0
+                ]
+            }
+        },
+        {
+            "id": 4,
+            "name": "Entity 4",
+            "transform": {
+                "position": [
+                    1.0,
+                    0.0,
+                    1.0
+                ],
+                "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                ],
+                "scale": [
+                    1.0,
+                    1.0,
+                    1.0
+                ]
+            }
+        },
+        {
+            "id": 5,
+            "name": "Entity 5",
+            "transform": {
+                "position": [
+                    3.0,
+                    0.0,
+                    3.0
+                ],
+                "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                ],
+                "scale": [
+                    1.0,
+                    1.0,
+                    1.0
+                ]
+            }
+        },
+        {
+            "id": 6,
+            "name": "Entity 6",
+            "transform": {
+                "position": [
+                    5.0,
+                    0.0,
+                    5.0
+                ],
+                "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                ],
+                "scale": [
+                    1.0,
+                    1.0,
+                    1.0
+                ]
+            }
+        },
+        {
+            "id": 7,
+            "name": "Entity 7",
+            "transform": {
+                "position": [
+                    7.0,
+                    0.0,
+                    7.0
+                ],
+                "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                ],
+                "scale": [
+                    1.0,
+                    1.0,
+                    1.0
+                ]
+            }
+        }
+    ]
+}
