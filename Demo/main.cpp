@@ -24,12 +24,18 @@
 
 #include <GL/glew.h>
 #include "imgui.h"
+#include <imgui_internal.h>
 #include "backends/imgui_impl_sdl2.h"
 #include "backends/imgui_impl_opengl3.h"
 
 #define SDL_MAIN_HANDLED
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_opengl.h>
+#include "StartupScreen.h"
+#include "Editor/Managers/ProjectManager.h"
+#include "Editor/Projects/RecentProjects.h"
+#include "../Engine/Components/Physics/PhysicsComponent.h"
+#include "../Engine/PhysicsSystem.h"
 
 // ------------------------------------------------------------
 // Helper
@@ -52,6 +58,11 @@ int main() {
         std::cerr << "Failed to init SDL: " << SDL_GetError() << std::endl;
         return -1;
     }
+
+    StartupScreen startupScreen;
+    std::string currentProjectPath;
+	AppState appState = AppState::Startup;
+	RecentProjects::Load();
 
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
@@ -96,10 +107,16 @@ int main() {
     // ---------------- ImGui Init ----------------
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
-    ImGuiIO& io = ImGui::GetIO(); (void)io;
+
+    ImGuiIO& io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable; // optional but recommended
+
     ImGui::StyleColorsDark();
+
     ImGui_ImplSDL2_InitForOpenGL(window, gl_context);
     ImGui_ImplOpenGL3_Init("#version 330");
+
     SDL_ShowCursor(SDL_TRUE);
     SDL_SetRelativeMouseMode(SDL_FALSE);
 
@@ -114,6 +131,7 @@ int main() {
     EntityManager entities(64);
     ComponentManager components;
     components.RegisterComponent<TransformComponent>();
+    components.RegisterComponent<PhysicsComponent>();
 
     for (int i = 0; i < 8; ++i) {
         Entity e = entities.CreateEntity();
@@ -180,10 +198,15 @@ int main() {
         bool up = keystate[SDL_SCANCODE_E];
         bool down = keystate[SDL_SCANCODE_Q];
 
-        camera.Update(forward, backward, left, right, up, down, mouseDX, mouseDY, dt);
+        if (editor.GetEngineMode() == EngineMode::Editor)
+        {
+            camera.Update(forward, backward, left, right, up, down, mouseDX, mouseDY, dt);
+            TransformSystem::Update(components, jobSystem);
+        }
+
 
         // ECS + Streaming
-        TransformSystem::Update(components, jobSystem);
+        
         /*if (int(SDL_GetTicks() / 500) % 2 == 0)
             loader.RequestLoad("Chunk_" + std::to_string(loadCounter++));
         loader.Update();
@@ -200,13 +223,75 @@ int main() {
         SDL_GetWindowSize(window, &windowW, &windowH);
         camera.SetAspect((float)windowW, (float)windowH);
 
-        // Draw your editor UI (Scene view internally scales)
-        editor.Draw();
+        if (editor.GetEngineMode() == EngineMode::Play)
+        {
+            PhysicsSystem::Update(entities, components, dt);
+        }
+
+        if (appState == AppState::Startup)
+        {
+            auto result = startupScreen.Draw();
+
+            if (result.projectChosen && !result.projectPath.empty())
+            {
+                ImGui::ClearActiveID();
+
+                bool projectReady = false;
+
+                //  Decide by extension
+                if (result.projectPath.extension() == ".meproj")
+                {
+                    // Open existing project
+                    projectReady = ProjectManager::Load(result.projectPath);
+                }
+                else
+                {
+                    // New project (folder path)
+                    ProjectManager::Create(result.projectPath);
+                    projectReady = true;
+                }
+
+                if (projectReady)
+                {
+                    RecentProjects::Add(
+                        result.projectPath.extension() == ".meproj"
+                        ? result.projectPath
+                        : ProjectManager::GetActive().projectFile
+                    );
+
+                    appState = AppState::Editor;
+                }
+                else
+                {
+                    startupScreen.NotifyLoadError();
+                }
+            }
+        }
+        else if (appState == AppState::Editor)
+        {
+            editor.Draw();
+        }
+
+
         
+       
 
         // ---------------- Render ImGui ----------------
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+    
+        if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+        {
+            SDL_Window* backup_current_window = SDL_GL_GetCurrentWindow();
+            SDL_GLContext backup_current_context = SDL_GL_GetCurrentContext();
+
+            ImGui::UpdatePlatformWindows();
+            ImGui::RenderPlatformWindowsDefault();
+
+            SDL_GL_MakeCurrent(backup_current_window, backup_current_context);
+        }
+
         SDL_GL_SwapWindow(window);
     }
 

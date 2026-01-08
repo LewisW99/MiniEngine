@@ -8,6 +8,10 @@
 #include "../Engine/AssetDatabase/AssetImporter.h"
 #include <filesystem>
 #include <windows.h>
+#include <imgui_internal.h>
+#include <imgui.h>
+#include "Editor/Managers/ProjectManager.h"
+#include "../Engine/Components/Physics/PhysicsComponent.h"
 #pragma comment(lib, "Comdlg32.lib")
 
 static bool RayIntersectsAABB(const glm::vec3& rayOrigin,
@@ -55,19 +59,37 @@ Editor::Editor(EntityManager* entityMgr,
 // Editor Drawing
 void Editor::Draw()
 {
+	
+
+    if(!ProjectManager::HasActiveProject())
+		return;
+
+
+    const auto& project = ProjectManager::GetActive();
+	AppState appState = AppState::Editor;
+    
+    BeginDockSpace();
+
+    ImGui::TextColored(
+        engineMode == EngineMode::Play
+        ? ImVec4(0.2f, 1.0f, 0.2f, 1.0f)
+        : ImVec4(1.0f, 1.0f, 0.2f, 1.0f),
+        engineMode == EngineMode::Play ? "MODE: PLAY" : "MODE: EDITOR"
+    );
+
 
     ImGuiIO& io = ImGui::GetIO();
 
     if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S))
     {
-        SceneSerializer::Save("scene.json", *entityMgr, *compMgr, meta);
+        SceneSerializer::Save(project.scenePath.string(), *entityMgr, *compMgr, meta);
         statusText = "Scene Saved!";
         statusTimer = 2.0f; // show for 2 seconds
     }
 
     if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_O))
     {
-        SceneSerializer::Load("scene.json", *entityMgr, *compMgr, meta);
+        SceneSerializer::Load(project.scenePath.string(), *entityMgr, *compMgr, meta);
         statusText = "Scene Loaded!";
         statusTimer = 2.0f;
     }
@@ -94,10 +116,15 @@ void Editor::Draw()
             }
 
             if (ImGui::MenuItem("Save Scene", "Ctrl+S"))
-                SceneSerializer::Save("scene.json", *entityMgr, *compMgr, meta);
+                SceneSerializer::Save(project.scenePath.string(), *entityMgr, *compMgr, meta);
 
             if (ImGui::MenuItem("Load Scene", "Ctrl+O"))
-                SceneSerializer::Load("scene.json", *entityMgr, *compMgr, meta);
+                SceneSerializer::Load(project.scenePath.string(), *entityMgr, *compMgr, meta);
+
+            if (ImGui::MenuItem("Close Project"))
+            {
+                appState = AppState::Startup;
+            }
 
             if (ImGui::MenuItem("Exit"))
                 exit(0);
@@ -136,7 +163,14 @@ void Editor::Draw()
                 }
             }
 
+            
+
             ImGui::EndMenu();
+        }
+
+        if (ImGui::Button(engineMode == EngineMode::Editor ? " Play" : " Stop"))
+        {
+            TogglePlayMode();
         }
 
         ImGui::EndMainMenuBar();
@@ -152,15 +186,10 @@ void Editor::Draw()
 // scene view panel (center)
 void Editor::DrawSceneView()
 {
-    ImGui::SetNextWindowPos(ImVec2(300, 40), ImGuiCond_Once);
-    ImGui::SetNextWindowSize(ImVec2(1320, 740), ImGuiCond_Once);
-    ImGuiWindowFlags flags =
-        ImGuiWindowFlags_NoCollapse |
-        ImGuiWindowFlags_NoMove |
-        ImGuiWindowFlags_NoResize;
+    
+    ImGuiIO& io = ImGui::GetIO();
 
-
-    ImGui::Begin("Scene", nullptr, flags);
+    ImGui::Begin("Scene");
 
     // main rendering
     ImVec2 avail = ImGui::GetContentRegionAvail();
@@ -354,15 +383,11 @@ void Editor::DrawSceneView()
 //Hierarchy Panel (left)
 void Editor::DrawHierarchy()
 {
-    ImGui::SetNextWindowPos(ImVec2(10, 40), ImGuiCond_Once);
-    ImGui::SetNextWindowSize(ImVec2(280, 740), ImGuiCond_Once);
+    ImGuiIO& io = ImGui::GetIO();
 
-    ImGuiWindowFlags flags =
-        ImGuiWindowFlags_NoCollapse |
-        ImGuiWindowFlags_NoMove |
-        ImGuiWindowFlags_NoResize;
+    
 
-    ImGui::Begin("Hierarchy", nullptr, flags);
+    ImGui::Begin("Hierarchy");
 
     if (!entityMgr || !compMgr) {
         ImGui::TextDisabled("Error: missing ECS references!");
@@ -477,16 +502,9 @@ void Editor::DrawHierarchy()
 //Details Area
 void Editor::DrawDetails()
 {
-    ImGui::SetNextWindowPos(ImVec2(1640, 40), ImGuiCond_Once);
-    ImGui::SetNextWindowSize(ImVec2(270, 740), ImGuiCond_Once);
-
-    ImGuiWindowFlags flags =
-        ImGuiWindowFlags_NoCollapse |
-        ImGuiWindowFlags_NoMove |
-        ImGuiWindowFlags_NoResize;
-
-
-        ImGui::Begin("Details", nullptr, flags);
+    ImGuiIO& io = ImGui::GetIO();
+    
+    ImGui::Begin("Details");
 
     if (!entityMgr) {
         ImGui::TextDisabled("Error: entityMgr is null!");
@@ -527,22 +545,27 @@ void Editor::DrawDetails()
         }
     }
 
+    bool hasPhysics = compMgr->HasComponent<PhysicsComponent>(selectedEntity);
 
+    if (ImGui::Checkbox("Enable Physics", &hasPhysics))
+    {
+        if (hasPhysics)
+            compMgr->AddComponent(selectedEntity, PhysicsComponent{});
+        else
+            compMgr->RemoveComponent<PhysicsComponent>(selectedEntity);
+    }
 
     ImGui::End();
 }
 
-#include <filesystem>
-#include <Windows.h>
-#pragma comment(lib, "Comdlg32.lib")
+
+
 
 void Editor::DrawAssetsPanel()
 {
 
-    ImGui::SetNextWindowPos(ImVec2(10, 790), ImGuiCond_Once);
-    ImGui::SetNextWindowSize(ImVec2(1900, 280), ImGuiCond_Once);
-    ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize;
-    ImGui::Begin("Assets", nullptr, flags);
+    
+    ImGui::Begin("Assets");
 
     ImGui::TextDisabled("Project Assets");
     ImGui::Separator();
@@ -601,7 +624,7 @@ void Editor::DrawAssetsPanel()
                 }
 
                 assetDB.ClearPreviews();   
-                assetDB.Scan("Assets");
+                assetDB.Scan(ProjectManager::GetActive().assetPath.string());
             }
             selectedType = -1;
             ImGui::CloseCurrentPopup();
@@ -627,7 +650,7 @@ void Editor::DrawAssetsPanel()
 
     // --- Grid of Assets ---
     static bool scanned = false;
-    if (!scanned) { assetDB.Scan("Assets"); scanned = true; }
+    if (!scanned) { assetDB.Scan(ProjectManager::GetActive().assetPath.string()); scanned = true; }
 
     auto& assets = assetDB.GetAssets();
     int itemsPerRow = 6;
@@ -703,3 +726,119 @@ GLuint Editor::LoadTextureForPreview(AssetInfo& a)
 
 
 
+void Editor::BeginDockSpace()
+{
+    static bool dockspaceInitialized = false;
+
+    ImGuiWindowFlags windowFlags =
+        ImGuiWindowFlags_MenuBar |
+        ImGuiWindowFlags_NoDocking |
+        ImGuiWindowFlags_NoTitleBar |
+        ImGuiWindowFlags_NoCollapse |
+        ImGuiWindowFlags_NoResize |
+        ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoBringToFrontOnFocus |
+        ImGuiWindowFlags_NoNavFocus;
+
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(viewport->Pos);
+    ImGui::SetNextWindowSize(viewport->Size);
+    ImGui::SetNextWindowViewport(viewport->ID);
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+
+    ImGui::Begin("DockSpaceRoot", nullptr, windowFlags);
+
+    ImGui::PopStyleVar(2);
+
+    ImGuiID dockspaceID = ImGui::GetID("MainDockSpace");
+
+    // Always create the dockspace every frame
+    ImGui::DockSpace(
+        dockspaceID,
+        ImVec2(0.0f, 0.0f),
+        ImGuiDockNodeFlags_PassthruCentralNode
+    );
+
+  
+    if (!dockspaceInitialized)
+    {
+        // Dockspace node must exist before DockBuilder touches it
+        if (ImGui::DockBuilderGetNode(dockspaceID) == nullptr)
+        {
+            ImGui::End();
+            return; // try again next frame
+        }
+
+        dockspaceInitialized = true;
+
+        ImGui::DockBuilderRemoveNode(dockspaceID);
+        ImGui::DockBuilderAddNode(dockspaceID, ImGuiDockNodeFlags_DockSpace);
+        ImGui::DockBuilderSetNodeSize(dockspaceID, viewport->Size);
+
+        ImGuiID dockMain = dockspaceID;
+        ImGuiID dockLeft = 0, dockRight = 0, dockBottom = 0;
+
+        ImGui::DockBuilderSplitNode(dockMain, ImGuiDir_Left, 0.20f, &dockLeft, &dockMain);
+        ImGui::DockBuilderSplitNode(dockMain, ImGuiDir_Right, 0.25f, &dockRight, &dockMain);
+        ImGui::DockBuilderSplitNode(dockMain, ImGuiDir_Down, 0.25f, &dockBottom, &dockMain);
+
+        ImGui::DockBuilderDockWindow("Hierarchy", dockLeft);
+        ImGui::DockBuilderDockWindow("Details", dockRight);
+        ImGui::DockBuilderDockWindow("Assets", dockBottom);
+        ImGui::DockBuilderDockWindow("Scene", dockMain);
+
+        ImGui::DockBuilderFinish(dockspaceID);
+    }
+
+    ImGui::End();
+}
+
+void Editor::TogglePlayMode()
+{
+    if (engineMode == EngineMode::Editor)
+    {
+        std::cout << "[Editor] Entering Play Mode...\n";
+		EnterPlayMode();
+    }
+    else
+    {
+		std::cout << "[Editor] Exiting Play Mode...\n";
+		ExitPlayMode();
+    }
+}
+
+void Editor::EnterPlayMode()
+{
+    // 1. Save editor scene to memory (or temp file)
+    SceneSerializer::Save("__temp_play_scene.scene", *entityMgr, *compMgr, meta);
+
+    // 2. Clear current ECS
+    entityMgr->Clear();
+    compMgr->Clear();
+    meta.Clear();
+
+    // 3. Load the temp scene as runtime state
+    SceneSerializer::Load("__temp_play_scene.scene", *entityMgr, *compMgr, meta);
+
+    engineMode = EngineMode::Play;
+}
+
+void Editor::ExitPlayMode()
+{
+    // Clear runtime state
+    entityMgr->Clear();
+    compMgr->Clear();
+    meta.Clear();
+
+    // Reload editor scene
+    SceneSerializer::Load(
+        activeScenePath.string(),
+        *entityMgr,
+        *compMgr,
+        meta
+    );
+
+    engineMode = EngineMode::Editor;
+}

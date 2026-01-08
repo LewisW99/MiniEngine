@@ -21,4 +21,8 @@ public:
     void Remove(Entity e) {
         names.erase(e.id);
     }
+
+    void Clear() {
+        names.clear();
+	}
 };

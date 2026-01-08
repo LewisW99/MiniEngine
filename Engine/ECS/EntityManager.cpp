@@ -27,3 +27,19 @@ void EntityManager::DestroyEntity(Entity entity) {
 bool EntityManager::IsAlive(Entity entity) const {
     return entity.id < m_MaxEntities && m_Alive[entity.id];
 }
+
+void EntityManager::Clear()
+{
+    // Reset alive flags
+    std::fill(m_Alive.begin(), m_Alive.end(), false);
+
+    // Reset available ID pool
+    std::queue<EntityID> empty;
+    std::swap(m_AvailableIDs, empty);
+
+    for (EntityID id = 0; id < m_MaxEntities; ++id)
+        m_AvailableIDs.push(id);
+
+    // Reset count
+    m_LivingCount = 0;
+}

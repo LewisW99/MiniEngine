@@ -4,6 +4,7 @@
 #include "../Engine/ECS/EntityManager.h"
 #include "../Engine/ECS/ComponentManager.h"
 #include "../Engine/ECS/EntityMeta.h"
+#include "../Engine/Components/Physics/PhysicsComponent.h"
 
 using json = nlohmann::json;
 
@@ -28,18 +29,30 @@ public:
 
             json entry;
             entry["id"] = e.id;
-            entry["name"] = meta.names.count(e.id) ? meta.names.at(e.id) : "Entity " + std::to_string(e.id);
+            entry["name"] = meta.names.count(e.id)
+                ? meta.names.at(e.id)
+                : "Entity " + std::to_string(e.id);
 
-            try
+            // -------- Transform --------
+            if (comps.HasComponent<TransformComponent>(e))
             {
                 const auto& t = comps.GetComponent<TransformComponent>(e);
                 entry["transform"] = {
                     { "position", { t.position.x, t.position.y, t.position.z } },
                     { "rotation", { t.rotation.x, t.rotation.y, t.rotation.z } },
-                    { "scale",    { t.scale.x, t.scale.y, t.scale.z } }
+                    { "scale",    { t.scale.x,    t.scale.y,    t.scale.z } }
                 };
             }
-            catch (...) { /* entity has no transform */ }
+
+            // -------- Physics --------
+            if (comps.HasComponent<PhysicsComponent>(e))
+            {
+                const auto& p = comps.GetComponent<PhysicsComponent>(e);
+                entry["physics"] = {
+                    { "enabled", p.enabled },
+                    { "mass",    p.mass }
+                };
+            }
 
             root["entities"].push_back(entry);
         }
@@ -61,34 +74,37 @@ public:
         file >> root;
         file.close();
 
-        // Clear existing
-        for (uint32_t id = 0; id < 10000; ++id)
-        {
-            Entity e{ id };
-            if (entities.IsAlive(e))
-            {
-                comps.RemoveComponent<TransformComponent>(e);
-                entities.DestroyEntity(e);
-                meta.Remove(e);
-            }
-        }
+        // Clear existing ECS
+        entities.Clear();
+        comps.Clear();
+        meta.Clear();
 
         for (auto& entry : root["entities"])
         {
             Entity e = entities.CreateEntity();
             meta.SetName(e, entry.value("name", "Entity " + std::to_string(e.id)));
 
+            // -------- Transform --------
             if (entry.contains("transform"))
             {
                 TransformComponent t;
-                auto pos = entry["transform"]["position"];
-                auto rot = entry["transform"]["rotation"];
-                auto scl = entry["transform"]["scale"];
+                auto& tr = entry["transform"];
 
-                t.position = { pos[0], pos[1], pos[2] };
-                t.rotation = { rot[0], rot[1], rot[2] };
-                t.scale = { scl[0], scl[1], scl[2] };
+                t.position = { tr["position"][0], tr["position"][1], tr["position"][2] };
+                t.rotation = { tr["rotation"][0], tr["rotation"][1], tr["rotation"][2] };
+                t.scale = { tr["scale"][0],    tr["scale"][1],    tr["scale"][2] };
+
                 comps.AddComponent(e, t);
+            }
+
+            // -------- Physics --------
+            if (entry.contains("physics"))
+            {
+                PhysicsComponent p;
+                p.enabled = entry["physics"].value("enabled", true);
+                p.mass = entry["physics"].value("mass", 1.0f);
+
+                comps.AddComponent(e, p);
             }
         }
     }

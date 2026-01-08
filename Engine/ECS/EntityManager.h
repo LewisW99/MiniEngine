@@ -14,6 +14,7 @@ public:
 
     bool IsAlive(Entity entity) const;
 
+    void Clear();
 private:
     std::queue<EntityID> m_AvailableIDs;
     std::vector<bool>    m_Alive;

@@ -10,6 +10,15 @@
 #include "../Engine/AssetDatabase/AssetDatabase.h"
 #include <imgui.h>
 
+enum class AppState {
+    Startup,
+    Editor
+};
+
+enum class EngineMode {
+    Editor,
+    Play
+};
 
 //Manages docking and ECU panels
 class Editor
@@ -30,6 +39,9 @@ public:
 
     const AssetInfo* selectedAsset = nullptr;
 
+    std::filesystem::path activeScenePath;
+
+	EngineMode GetEngineMode() const { return engineMode; }
 
 private:
     EntityManager* entityMgr = nullptr;
@@ -46,6 +58,14 @@ private:
     void DrawHierarchy();
     void DrawDetails();
     void DrawAssetsPanel();
+    void BeginDockSpace();
+
+    void TogglePlayMode();
+
+    void EnterPlayMode();
+	void ExitPlayMode();
 
     GLuint LoadTextureForPreview(AssetInfo& a);
+
+	EngineMode engineMode = EngineMode::Editor;
 };

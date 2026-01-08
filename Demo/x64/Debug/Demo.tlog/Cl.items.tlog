@@ -1,2 +1,5 @@
 C:\Users\Lewis\source\repos\MiniEngine\Demo\Editor.cpp;C:\Users\Lewis\source\repos\MiniEngine\Demo\x64\Debug\Editor.obj
+C:\Users\Lewis\source\repos\MiniEngine\Demo\Editor\Managers\ProjectManager.cpp;C:\Users\Lewis\source\repos\MiniEngine\Demo\x64\Debug\ProjectManager.obj
+C:\Users\Lewis\source\repos\MiniEngine\Demo\Editor\Projects\RecentProjects.cpp;C:\Users\Lewis\source\repos\MiniEngine\Demo\x64\Debug\RecentProjects.obj
+C:\Users\Lewis\source\repos\MiniEngine\Demo\Editor\StartupScreen.cpp;C:\Users\Lewis\source\repos\MiniEngine\Demo\x64\Debug\StartupScreen.obj
 C:\Users\Lewis\source\repos\MiniEngine\Demo\main.cpp;C:\Users\Lewis\source\repos\MiniEngine\Demo\x64\Debug\main.obj

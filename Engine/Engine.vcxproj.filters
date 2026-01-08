@@ -141,6 +141,12 @@
     <ClInclude Include="AssetDatabase\AssetImporter.h">
       <Filter>Core\Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Components\Physics\PhysicsComponent.h">
+      <Filter>Core\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="PhysicsSystem.h">
+      <Filter>Core\Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Engine.cpp">
@@ -179,27 +185,6 @@
     <ClCompile Include="ECS\EntityManager.cpp">
       <Filter>ECS</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\..\imgui-1.92.4\imgui-1.92.4\imgui.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\..\imgui-1.92.4\imgui-1.92.4\imgui_demo.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\..\imgui-1.92.4\imgui-1.92.4\imgui_draw.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\..\imgui-1.92.4\imgui-1.92.4\imgui_tables.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\..\imgui-1.92.4\imgui-1.92.4\imgui_widgets.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\..\imgui-1.92.4\imgui-1.92.4\backends\imgui_impl_opengl3.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\..\imgui-1.92.4\imgui-1.92.4\backends\imgui_impl_sdl2.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="Renderer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -213,6 +198,30 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="AssetDatabase\AssetImporter.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\imgui-1.92.4\imgui-docking\imgui.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\imgui-1.92.4\imgui-docking\imgui_demo.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\imgui-1.92.4\imgui-docking\imgui_draw.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\imgui-1.92.4\imgui-docking\imgui_tables.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\imgui-1.92.4\imgui-docking\imgui_widgets.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\imgui-1.92.4\imgui-docking\backends\imgui_impl_opengl3.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\imgui-1.92.4\imgui-docking\backends\imgui_impl_sdl2.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="PhysicsSystem.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

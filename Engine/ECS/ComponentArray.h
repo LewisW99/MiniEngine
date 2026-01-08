@@ -4,11 +4,19 @@
 #include <cassert>
 #include "../ECS/Entity.h"
 
+
+struct IComponentArray
+{
+    virtual ~IComponentArray() = default;
+    virtual void Clear() = 0;
+};
+
 // ------------------------------------------------------------
 // ComponentArray<T> — tightly-packed storage for one component type
 // ------------------------------------------------------------
 template<typename T>
-class ComponentArray {
+class ComponentArray : public IComponentArray 
+{
 public:
     void InsertData(Entity entity, const T& component) {
         assert(m_EntityToIndex.find(entity.id) == m_EntityToIndex.end() && "Component already exists!");
@@ -38,6 +46,13 @@ public:
         return m_Components[m_EntityToIndex[entity.id]];
     }
 
+    void Clear() override
+    {
+        m_Components.clear();
+        m_EntityToIndex.clear();
+        m_IndexToEntity.clear();
+    }
+
     const T& GetData(Entity entity) const {
         return m_Components[m_EntityToIndex.at(entity.id)];
     }
@@ -47,6 +62,8 @@ public:
     }
 
     std::vector<T>& GetRaw() { return m_Components; }
+
+
 
 private:
     std::vector<T> m_Components;

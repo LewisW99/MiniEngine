@@ -79,13 +79,16 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>C:\Users\Lewis\imgui-1.92.4\imgui-1.92.4; C:\Users\Lewis\imgui-1.92.4\imgui-1.92.4\backends;</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Libraries\SDL2\include;C:\Users\Lewis\imgui-1.92.4\imgui-docking\backends;C:\Users\Lewis\imgui-1.92.4\imgui-docking</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>
       </SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <Lib>
+      <AdditionalLibraryDirectories>C:\Libraries\SDL2\lib\x64</AdditionalLibraryDirectories>
+    </Lib>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
@@ -98,13 +101,16 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>C:\Users\Lewis\imgui-1.92.4\imgui-1.92.4; C:\Users\Lewis\imgui-1.92.4\imgui-1.92.4\backends;</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Libraries\SDL2\include;C:\Users\Lewis\imgui-1.92.4\imgui-docking\backends;C:\Users\Lewis\imgui-1.92.4\imgui-docking</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>
       </SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <Lib>
+      <AdditionalLibraryDirectories>C:\Libraries\SDL2\lib\x64</AdditionalLibraryDirectories>
+    </Lib>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -115,13 +121,16 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>C:\Users\Lewis\imgui-1.92.4\imgui-1.92.4; C:\Users\Lewis\imgui-1.92.4\imgui-1.92.4\backends;</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Libraries\SDL2\include;C:\Users\Lewis\imgui-1.92.4\imgui-docking\backends;C:\Users\Lewis\imgui-1.92.4\imgui-docking</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>
       </SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <Lib>
+      <AdditionalLibraryDirectories>C:\Libraries\SDL2\lib\x64</AdditionalLibraryDirectories>
+    </Lib>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -134,13 +143,16 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>C:\Users\Lewis\imgui-1.92.4\imgui-1.92.4; C:\Users\Lewis\imgui-1.92.4\imgui-1.92.4\backends;</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Libraries\SDL2\include;C:\Users\Lewis\imgui-1.92.4\imgui-docking\backends;C:\Users\Lewis\imgui-1.92.4\imgui-docking</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>
       </SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <Lib>
+      <AdditionalLibraryDirectories>C:\Libraries\SDL2\lib\x64</AdditionalLibraryDirectories>
+    </Lib>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="..\..\..\..\imgui-1.92.4\imgui-1.92.4\backends\imgui_impl_opengl3.h" />
@@ -148,6 +160,7 @@
     <ClInclude Include="AssetDatabase\AssetDatabase.h" />
     <ClInclude Include="AssetDatabase\AssetImporter.h" />
     <ClInclude Include="AsyncLoader.h" />
+    <ClInclude Include="Components\Physics\PhysicsComponent.h" />
     <ClInclude Include="ConfigReader.h" />
     <ClInclude Include="Core\Memory\Allocator.h" />
     <ClInclude Include="Core\Memory\LinearAllocator.h" />
@@ -166,6 +179,7 @@
     <ClInclude Include="Math\MathConversions.h" />
     <ClInclude Include="Math\MathTypes.h" />
     <ClInclude Include="pch.h" />
+    <ClInclude Include="PhysicsSystem.h" />
     <ClInclude Include="ProfilerOverlay.h" />
     <ClInclude Include="Renderer.h" />
     <ClInclude Include="Rendering\Camera.h" />
@@ -178,43 +192,43 @@
     <ClInclude Include="TransformSystem.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\..\..\imgui-1.92.4\imgui-1.92.4\backends\imgui_impl_opengl3.cpp">
+    <ClCompile Include="..\..\..\..\imgui-1.92.4\imgui-docking\backends\imgui_impl_opengl3.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="..\..\..\..\imgui-1.92.4\imgui-1.92.4\backends\imgui_impl_sdl2.cpp">
+    <ClCompile Include="..\..\..\..\imgui-1.92.4\imgui-docking\backends\imgui_impl_sdl2.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="..\..\..\..\imgui-1.92.4\imgui-1.92.4\imgui.cpp">
+    <ClCompile Include="..\..\..\..\imgui-1.92.4\imgui-docking\imgui.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="..\..\..\..\imgui-1.92.4\imgui-1.92.4\imgui_demo.cpp">
+    <ClCompile Include="..\..\..\..\imgui-1.92.4\imgui-docking\imgui_demo.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="..\..\..\..\imgui-1.92.4\imgui-1.92.4\imgui_draw.cpp">
+    <ClCompile Include="..\..\..\..\imgui-1.92.4\imgui-docking\imgui_draw.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="..\..\..\..\imgui-1.92.4\imgui-1.92.4\imgui_tables.cpp">
+    <ClCompile Include="..\..\..\..\imgui-1.92.4\imgui-docking\imgui_tables.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="..\..\..\..\imgui-1.92.4\imgui-1.92.4\imgui_widgets.cpp">
+    <ClCompile Include="..\..\..\..\imgui-1.92.4\imgui-docking\imgui_widgets.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
@@ -241,6 +255,7 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="PhysicsSystem.cpp" />
     <ClCompile Include="ProfilerOverlay.cpp" />
     <ClCompile Include="Renderer.cpp" />
     <ClCompile Include="SceneCullingDemo.cpp" />
