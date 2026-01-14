@@ -172,6 +172,7 @@
     <ClInclude Include="ECS\Entity.h" />
     <ClInclude Include="ECS\EntityManager.h" />
     <ClInclude Include="ECS\EntityMeta.h" />
+    <ClInclude Include="EditorConsole.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="FrustumCuller.h" />
     <ClInclude Include="ImGuizmo.h" />
@@ -189,6 +190,7 @@
     <ClInclude Include="Scripting\LuaEntity.h" />
     <ClInclude Include="Scripting\LuaTest.h" />
     <ClInclude Include="Scripting\ScriptSystem.h" />
+    <ClInclude Include="Scripting\ScriptTemplates.h" />
     <ClInclude Include="Shader.h" />
     <ClInclude Include="Streaming\StreamingManager.h" />
     <ClInclude Include="ThreadPool.h" />
@@ -243,6 +245,7 @@
     <ClCompile Include="Core\Memory\Allocator.cpp" />
     <ClCompile Include="DummyAllocator.cpp" />
     <ClCompile Include="ECS\EntityManager.cpp" />
+    <ClCompile Include="EditorConsole.cpp" />
     <ClCompile Include="Engine.cpp" />
     <ClCompile Include="FrustumCuller.cpp" />
     <ClCompile Include="ImGuizmo.cpp">

@@ -162,6 +162,12 @@
     <ClInclude Include="Scripting\LuaEntity.h">
       <Filter>Scripting</Filter>
     </ClInclude>
+    <ClInclude Include="EditorConsole.h">
+      <Filter>Core\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Scripting\ScriptTemplates.h">
+      <Filter>Scripting</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Engine.cpp">
@@ -247,6 +253,9 @@
     </ClCompile>
     <ClCompile Include="Scripting\ScriptComponent.h">
       <Filter>Scripting</Filter>
+    </ClCompile>
+    <ClCompile Include="EditorConsole.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

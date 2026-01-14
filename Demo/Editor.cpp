@@ -14,7 +14,84 @@
 #include "../Engine/Components/Physics/PhysicsComponent.h"
 #include "../Engine/Scripting/ScriptComponent.h"
 #include <sstream>
+#include "../Engine/EditorConsole.h"
+#include "Scripting/ScriptAPI.h"
+
 #pragma comment(lib, "Comdlg32.lib")
+
+
+static std::string GetLuaTemplateText(
+    ScriptTemplate type,
+    const std::string& scriptName)
+{
+    switch (type)
+    {
+    case ScriptTemplate::PlayerMovement:
+        return
+            "-- " + scriptName + ".lua\n"
+            "-- Player movement example\n\n"
+            "local speed = 5.0\n\n"
+            "function OnStart(self)\n"
+            "    print(\"Player started\")\n"
+            "end\n\n"
+            "function OnUpdate(self, dt)\n"
+            "    Transform.Translate(self, speed * dt, 0, 0)\n"
+            "end\n\n"
+            "function OnDestroy(self)\n"
+            "end\n";
+
+    case ScriptTemplate::CameraFollow:
+        return
+            "-- " + scriptName + ".lua\n"
+            "-- Camera follow example\n\n"
+            "local followSpeed = 3.0\n\n"
+            "function OnStart(self)\n"
+            "    print(\"Camera follow active\")\n"
+            "end\n\n"
+            "function OnUpdate(self, dt)\n"
+            "    Transform.Translate(self, 0, 0, followSpeed * dt)\n"
+            "end\n";
+
+    case ScriptTemplate::SimpleAI:
+        return
+            "-- " + scriptName + ".lua\n"
+            "-- Simple AI patrol\n\n"
+            "local speed = 2.0\n"
+            "local direction = 1\n"
+            "local limit = 5.0\n"
+            "local traveled = 0.0\n\n"
+            "function OnUpdate(self, dt)\n"
+            "    local move = direction * speed * dt\n"
+            "    Transform.Translate(self, move, 0, 0)\n\n"
+            "    traveled = traveled + math.abs(move)\n"
+            "    if traveled > limit then\n"
+            "        direction = -direction\n"
+            "        traveled = 0.0\n"
+            "    end\n"
+            "end\n";
+
+    case ScriptTemplate::Rotator:
+        return
+            "-- " + scriptName + ".lua\n"
+            "-- Rotation placeholder\n\n"
+            "local rotationSpeed = 45.0\n\n"
+            "function OnUpdate(self, dt)\n"
+            "    -- Rotation API coming later\n"
+            "end\n";
+
+    case ScriptTemplate::Empty:
+    default:
+        return
+            "-- " + scriptName + ".lua\n"
+            "-- Docs: https://www.lua.org/manual/5.4/\n\n"
+            "function OnStart(self)\n"
+            "end\n\n"
+            "function OnUpdate(self, dt)\n"
+            "end\n\n"
+            "function OnDestroy(self)\n"
+            "end\n";
+    }
+}
 
 static bool RayIntersectsAABB(const glm::vec3& rayOrigin,
     const glm::vec3& rayDir,
@@ -43,6 +120,56 @@ static bool RayIntersectsAABB(const glm::vec3& rayOrigin,
     tOut = tmin;
 
     return true;
+}
+
+
+static std::string GetCurrentLine(
+    const char* buffer,
+    int cursorPos)
+{
+    int start = cursorPos;
+    while (start > 0 && buffer[start - 1] != '\n')
+        start--;
+
+    int end = cursorPos;
+    while (buffer[end] && buffer[end] != '\n')
+        end++;
+
+    return std::string(buffer + start, buffer + end);
+}
+
+static bool IsValidLuaScriptName(const std::string& name)
+{
+    if (name.empty())
+        return false;
+
+    for (char c : name)
+    {
+        if (!isalnum(c) && c != '_' && c != '-')
+            return false;
+    }
+
+    return true;
+}
+
+static void InsertTextAtEnd(OpenScript& script, const std::string& text)
+{
+    // Ensure newline separation
+    if (!script.contents.empty() &&
+        script.contents.back() != '\n')
+    {
+        script.contents += "\n";
+    }
+
+    script.contents += text;
+    script.contents += "\n";
+
+    // Rebuild buffer
+    script.buffer.resize(script.contents.size() + 1024);
+    memcpy(script.buffer.data(), script.contents.c_str(), script.contents.size());
+    script.buffer[script.contents.size()] = '\0';
+
+    script.dirty = true;
 }
 
 static std::string ReadFileText(const std::string& path)
@@ -104,6 +231,18 @@ Editor::Editor(EntityManager* entityMgr,
     streamer(streamer),
     scriptSystem(scripting)
 {
+}
+
+static int ScriptEditorCallback(ImGuiInputTextCallbackData* data)
+{
+    Editor* editor = (Editor*)data->UserData;
+
+    if (data->EventFlag == ImGuiInputTextFlags_CallbackAlways)
+    {
+        editor->scriptCursorPos = data->CursorPos;
+    }
+
+    return 0;
 }
 
 // Editor Drawing
@@ -223,7 +362,7 @@ void Editor::Draw()
         {
             if (ImGui::MenuItem("New Script"))
             {
-                ImGui::OpenPopup("Create Lua Script");
+                requestCreateScriptPopup = true;
             }
 
             if (activeScriptIndex >= 0)
@@ -234,18 +373,43 @@ void Editor::Draw()
                 }
             }
 
+            ImGui::Separator();
+
+            if (ImGui::MenuItem("Lua Documentation"))
+            {
+                ShellExecuteA(
+                    nullptr,
+                    "open",
+                    "https://www.lua.org/manual/5.4/",
+                    nullptr,
+                    nullptr,
+                    SW_SHOWNORMAL
+                );
+            }
+
             ImGui::EndMenu();
         }
 
-
-        if (ImGui::Button(engineMode == EngineMode::Editor ? " Play" : " Stop"))
+        if(ImGui::Button("Play"))
         {
             TogglePlayMode();
-        }
+		}
 
         ImGui::EndMainMenuBar();
     }
 
+
+
+    if (requestCreateScriptPopup)
+    {
+        ImGui::OpenPopup("Create Lua Script");
+        requestCreateScriptPopup = false;
+    }
+
+    if (!openScripts.empty())
+    {
+		DrawScriptDocsPanel();
+    }
 
     DrawHierarchy();
     DrawSceneView();
@@ -253,6 +417,7 @@ void Editor::Draw()
 	DrawAssetsPanel();
     DrawScriptEditor();
     DrawCreateScriptPopup();
+	DrawConsoleWindow();
 }
 
 // scene view panel (center)
@@ -635,8 +800,11 @@ void Editor::DrawDetails()
 
         auto scripts = GetProjectLuaScripts();
 
-        int currentIndex = -1;
-        for (int i = 0; i < (int)scripts.size(); ++i)
+        // Insert New Script option at the top
+        scripts.insert(scripts.begin(), "<New Script>");
+
+        int currentIndex = 0; // default to <New Script>
+        for (int i = 1; i < (int)scripts.size(); ++i)
         {
             if (scripts[i] == sc.ScriptPath)
             {
@@ -647,21 +815,38 @@ void Editor::DrawDetails()
 
         if (ImGui::BeginCombo(
             "Script File",
-            currentIndex >= 0 ? scripts[currentIndex].c_str() : "<None>"))
+            scripts[currentIndex].c_str()))
         {
             for (int i = 0; i < (int)scripts.size(); ++i)
             {
                 bool selected = (i == currentIndex);
                 if (ImGui::Selectable(scripts[i].c_str(), selected))
                 {
-                    sc.ScriptPath = scripts[i];
+                    // -------- New Script --------
+                    if (scripts[i] == "<New Script>")
+                    {
+                        requestCreateScriptPopup = true;
+                    }
+                    else
+                    {
+                        sc.ScriptPath = scripts[i];
+
+                        const auto& project = ProjectManager::GetActive();
+                        OpenScriptFile(
+                            (project.rootPath / sc.ScriptPath).string()
+                        );
+
+                        FocusScriptEditor();
+                    }
                 }
+
                 if (selected)
                     ImGui::SetItemDefaultFocus();
             }
             ImGui::EndCombo();
         }
 
+        // Existing script actions
         if (!sc.ScriptPath.empty())
         {
             if (ImGui::Button("Open Script"))
@@ -670,6 +855,7 @@ void Editor::DrawDetails()
                 OpenScriptFile(
                     (project.rootPath / sc.ScriptPath).string()
                 );
+                FocusScriptEditor();
             }
 
             ImGui::SameLine();
@@ -684,7 +870,9 @@ void Editor::DrawDetails()
     {
         if (ImGui::Button("Add Script"))
         {
-            compMgr->AddComponent(selectedEntity, ScriptComponent{});
+            ScriptComponent sc;
+            sc.ScriptPath = "";
+            compMgr->AddComponent(selectedEntity, sc);
         }
     }
 
@@ -953,9 +1141,16 @@ void Editor::BeginDockSpace()
 
         ImGui::DockBuilderDockWindow("Hierarchy", dockLeft);
         ImGui::DockBuilderDockWindow("Details", dockRight);
+        ImGui::DockBuilderDockWindow("Console", dockBottom);
         ImGui::DockBuilderDockWindow("Assets", dockBottom);
-        ImGui::DockBuilderDockWindow("Scene", dockMain);
         ImGui::DockBuilderDockWindow("Script Editor", dockMain);
+        ImGui::DockBuilderDockWindow("Scene", dockMain);
+
+        if (!openScripts.empty())
+        {
+            ImGui::DockBuilderDockWindow("Script Docs", dockRight);
+        }
+ 
 
         ImGui::DockBuilderFinish(dockspaceID);
     }
@@ -1044,10 +1239,18 @@ void Editor::ExitPlayMode()
     engineMode = EngineMode::Editor;
 }
 
-void Editor::CreateLuaScript(const std::string& scriptName)
+void Editor::CreateLuaScript(const std::string& scriptName, ScriptTemplate templateType)
 {
     if (!ProjectManager::HasActiveProject())
         return;
+
+    if (!IsValidLuaScriptName(scriptName))
+    {
+        EditorConsole::Error(
+            "[Script] Invalid script name. Use letters, numbers, _ or - only."
+        );
+        return;
+    }
 
     const auto& project = ProjectManager::GetActive();
 
@@ -1059,24 +1262,43 @@ void Editor::CreateLuaScript(const std::string& scriptName)
     std::filesystem::path scriptPath =
         scriptsDir / (scriptName + ".lua");
 
+    //  Duplicate protection
     if (std::filesystem::exists(scriptPath))
+    {
+        EditorConsole::Error(
+            "[Script] Script already exists: " + scriptName + ".lua"
+        );
         return;
+    }
 
     std::ofstream out(scriptPath);
     if (!out.is_open())
+    {
+        EditorConsole::Error(
+            "[Script] Failed to create script file."
+        );
         return;
+    }
 
-    out <<
-        "-- Script: " << scriptName << "\n\n"
-        "function OnStart(self)\n"
-        "end\n\n"
-        "function OnUpdate(self, dt)\n"
-        "end\n\n"
-        "function OnDestroy(self)\n"
-        "end\n";
+	out << GetLuaTemplateText(templateType, scriptName);
 
     out.close();
+
+    // Auto-assign to selected entity
+    if (selectedEntity && compMgr->HasComponent<ScriptComponent>(selectedEntity))
+    {
+        auto& sc = compMgr->GetComponent<ScriptComponent>(selectedEntity);
+        sc.ScriptPath = "Scripts/" + scriptName + ".lua";
+    }
+
+    EditorConsole::Log(
+        "[Script] Created: Scripts/" + scriptName + ".lua"
+    );
+
+    OpenScriptFile(scriptPath.string());
+    FocusScriptEditor();
 }
+
 
 void Editor::OpenScriptFile(const std::string& path)
 {
@@ -1110,10 +1332,72 @@ void Editor::SaveScript(OpenScript& script)
     std::cout << "[Editor] Saved script: " << script.path << "\n";
 }
 
+int Editor::FindOrOpenScript(const std::string& path)
+{
+    // Already open?
+    for (int i = 0; i < (int)openScripts.size(); ++i)
+    {
+        if (openScripts[i].path == path)
+            return i;
+    }
+
+    // Not open → load it
+    OpenScript script;
+    script.path = path;
+    script.contents = ReadFileText(path);
+
+    script.buffer.resize(script.contents.size() + 1024);
+    memcpy(script.buffer.data(), script.contents.c_str(), script.contents.size());
+    script.buffer[script.contents.size()] = '\0';
+
+    script.dirty = false;
+    script.hasError = false;
+    script.errorLogged = false;
+    script.highlightLine = -1;
+
+    openScripts.push_back(script);
+    return (int)openScripts.size() - 1;
+}
+
 
 void Editor::DrawScriptEditor()
 {
     ImGui::Begin("Script Editor");
+
+    if (scriptJump.pending)
+    {
+        int index = FindOrOpenScript(scriptJump.scriptPath);
+        activeScriptIndex = index;
+
+        openScripts[index].highlightLine = scriptJump.line;
+
+        scriptJump.pending = false;
+    }
+
+    if (activeScriptIndex >= 0)
+    {
+        OpenScript& active = openScripts[activeScriptIndex];
+
+        ImGui::TextUnformatted(active.path.c_str());
+        ImGui::SameLine();
+
+        if (ImGui::Button("Save"))
+            SaveScript(active);
+
+        ImGui::SameLine();
+
+        if (ImGui::Button("Reload from Disk"))
+        {
+            active.contents = ReadFileText(active.path);
+            active.buffer.resize(active.contents.size() + 1024);
+            memcpy(active.buffer.data(), active.contents.c_str(), active.contents.size());
+            active.buffer[active.contents.size()] = '\0';
+            active.dirty = false;
+        }
+    }
+
+
+    ImGui::Separator();
 
     if (openScripts.empty())
     {
@@ -1122,16 +1406,16 @@ void Editor::DrawScriptEditor()
         return;
     }
 
+
     if (ImGui::BeginTabBar("ScriptTabs"))
     {
         for (int i = 0; i < (int)openScripts.size(); ++i)
         {
             OpenScript& script = openScripts[i];
 
-            std::string fileName =
+            std::string tabName =
                 std::filesystem::path(script.path).filename().string();
 
-            std::string tabName = fileName;
             if (script.dirty)
                 tabName += "*";
 
@@ -1140,42 +1424,7 @@ void Editor::DrawScriptEditor()
             {
                 activeScriptIndex = i;
 
-                // =============================
-                // Header / Toolbar
-                // =============================
-                ImGui::TextDisabled("%s", script.path.c_str());
-
-                if (script.dirty)
-                {
-                    ImGui::SameLine();
-                    ImGui::TextColored(
-                        ImVec4(1.0f, 0.6f, 0.2f, 1.0f),
-                        "● Unsaved"
-                    );
-                }
-
-                ImGui::Separator();
-
-                // Toolbar buttons
-                if (ImGui::Button("Save"))
-                {
-                    SaveScript(script);
-                }
-
-                ImGui::SameLine();
-
-                if (ImGui::Button("Reload from Disk"))
-                {
-                    script.contents = ReadFileText(script.path);
-                    script.buffer.resize(script.contents.size() + 1024);
-                    memcpy(script.buffer.data(),
-                        script.contents.c_str(),
-                        script.contents.size());
-                    script.buffer[script.contents.size()] = '\0';
-                    script.dirty = false;
-                }
-
-                // Ctrl+S shortcut
+                // Ctrl+S
                 if (ImGui::GetIO().KeyCtrl &&
                     ImGui::IsKeyPressed(ImGuiKey_S))
                 {
@@ -1184,18 +1433,96 @@ void Editor::DrawScriptEditor()
 
                 ImGui::Separator();
 
-                // =============================
-                // Script Text Editor
-                // =============================
+                if (!pendingScriptInsert.empty())
+                {
+                    InsertTextAtEnd(script, pendingScriptInsert);
+                    pendingScriptInsert.clear();
+                }
+
+                // ---------------- Text editor ----------------
                 if (ImGui::InputTextMultiline(
                     "##ScriptText",
                     script.buffer.data(),
                     script.buffer.size(),
                     ImVec2(-1, -1),
-                    ImGuiInputTextFlags_AllowTabInput))
+                    ImGuiInputTextFlags_AllowTabInput |
+                    ImGuiInputTextFlags_CallbackAlways,
+                    ScriptEditorCallback,
+                    this
+                ))
                 {
+                    if (script.highlightLine > 0)
+                    {
+                        int targetLine = script.highlightLine - 1;
+
+                        float lineHeight = ImGui::GetTextLineHeight();
+                        float scrollY = targetLine * lineHeight;
+
+                        ImGui::SetScrollY(scrollY);
+
+                        // Visual hint (minimal, non-invasive)
+                        ImGui::Separator();
+                        ImGui::TextColored(
+                            ImVec4(1.0f, 0.4f, 0.4f, 1.0f),
+                            " Error on line %d",
+                            script.highlightLine
+                        );
+
+                        script.highlightLine = -1; // one-shot
+                    }
                     script.contents = script.buffer.data();
                     script.dirty = true;
+
+                    //  REALTIME VALIDATION
+                    std::string error;
+                    bool ok = scriptSystem->ValidateScriptText(
+                        script.contents,
+                        error
+                    );
+
+                    script.hasError = !ok;
+                    script.lastError = error;
+                }
+
+                int cursor = scriptCursorPos;
+                std::string line =
+                    GetCurrentLine(script.buffer.data(), cursor);
+
+                if (ImGui::IsItemActive())
+                {
+
+                    const auto& api = GetScriptAPI();
+
+                    for (const auto& category : api)
+                    {
+                        if (line.find(category.name + ".") != std::string::npos)
+                        {
+                            ImGui::BeginTooltip();
+                            ImGui::Text("%s API", category.name.c_str());
+                            ImGui::Separator();
+
+                            for (const auto& fn : category.functions)
+                            {
+                                ImGui::Text("%s", fn.signature.c_str());
+                                ImGui::TextDisabled("%s", fn.description.c_str());
+                                ImGui::Separator();
+                            }
+
+                            ImGui::EndTooltip();
+                            break;
+                        }
+                    }
+                }
+
+                // ---------------- Inline error UI ----------------
+                if (script.hasError)
+                {
+                    ImGui::Separator();
+                    ImGui::TextColored(
+                        ImVec4(1.0f, 0.3f, 0.3f, 1.0f),
+                        "Lua Error:"
+                    );
+                    ImGui::TextWrapped("%s", script.lastError.c_str());
                 }
 
                 ImGui::EndTabItem();
@@ -1206,7 +1533,6 @@ void Editor::DrawScriptEditor()
                 openScripts.erase(openScripts.begin() + i);
                 if (activeScriptIndex >= i)
                     activeScriptIndex--;
-
                 break;
             }
         }
@@ -1217,39 +1543,219 @@ void Editor::DrawScriptEditor()
     ImGui::End();
 }
 
+
 void Editor::DrawCreateScriptPopup()
 {
-    if (ImGui::BeginPopupModal(
+    if (!ImGui::BeginPopupModal(
         "Create Lua Script",
         nullptr,
         ImGuiWindowFlags_AlwaysAutoResize))
+        return;
+
+    ImGui::Text("Script name:");
+    ImGui::InputText(
+        "##ScriptName",
+        newScriptName,
+        sizeof(newScriptName));
+
+    ImGui::Spacing();
+
+    // ---------- Template selector ----------
+    static const char* templateNames[] =
     {
-        ImGui::Text("Script name:");
-        ImGui::InputText("##ScriptName",
-            newScriptName,
-            sizeof(newScriptName));
+        "Empty",
+        "Player Movement",
+        "Camera Follow",
+        "Simple AI",
+        "Rotator"
+    };
 
-        ImGui::Spacing();
+    int templateIndex = (int)selectedScriptTemplate;
 
-        if (ImGui::Button("Create", ImVec2(120, 0)))
+    ImGui::Text("Template:");
+    if (ImGui::Combo(
+        "##ScriptTemplate",
+        &templateIndex,
+        templateNames,
+        IM_ARRAYSIZE(templateNames)))
+    {
+        selectedScriptTemplate =
+            (ScriptTemplate)templateIndex;
+    }
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    // ---------- Buttons ----------
+    if (ImGui::Button("Create", ImVec2(120, 0)))
+    {
+        if (strlen(newScriptName) > 0)
         {
-            if (strlen(newScriptName) > 0)
+            CreateLuaScript(
+                newScriptName,
+                selectedScriptTemplate
+            );
+
+            newScriptName[0] = '\0';
+            selectedScriptTemplate = ScriptTemplate::Empty;
+
+            ImGui::CloseCurrentPopup();
+        }
+    }
+
+    ImGui::SameLine();
+
+    if (ImGui::Button("Cancel", ImVec2(120, 0)))
+    {
+        newScriptName[0] = '\0';
+        selectedScriptTemplate = ScriptTemplate::Empty;
+        ImGui::CloseCurrentPopup();
+    }
+
+    ImGui::EndPopup();
+}
+
+void Editor::DrawConsoleWindow()
+{
+    ImGui::Begin("Console");
+
+    if (ImGui::Button("Clear"))
+    {
+        EditorConsole::Clear();
+    }
+
+    ImGui::Separator();
+
+    ImGui::BeginChild("ConsoleScroll",
+        ImVec2(0, 0),
+        false,
+        ImGuiWindowFlags_AlwaysVerticalScrollbar);
+
+    const auto& messages = EditorConsole::GetMessages();
+
+    for (const ConsoleMessage& msg : messages)
+    {
+        if (msg.level == LogLevel::Error)
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 0.3f, 0.3f, 1));
+
+        if (msg.hasScriptLocation && !msg.scriptPath.empty() && msg.scriptPath[0] != '<')
+        {
+            if (ImGui::Selectable(msg.text.c_str()))
             {
-                CreateLuaScript(newScriptName);
-                newScriptName[0] = '\0';
-                ImGui::CloseCurrentPopup();
+                scriptJump.pending = true;
+                scriptJump.scriptPath = msg.scriptPath;
+                scriptJump.line = msg.line;
+            }
+        }
+        else
+        {
+            ImGui::TextWrapped("%s", msg.text.c_str());
+        }
+
+        if (msg.level == LogLevel::Error)
+            ImGui::PopStyleColor();
+    }
+
+    // Auto-scroll to bottom
+    if (ImGui::GetScrollY() >= ImGui::GetScrollMaxY())
+        ImGui::SetScrollHereY(1.0f);
+
+    ImGui::EndChild();
+    ImGui::End();
+}
+
+void Editor::DrawScriptDocsPanel()
+{
+    ImGui::Begin("Script Docs");
+
+    static char searchBuf[128] = {};
+    ImGui::InputTextWithHint(
+        "##ScriptDocSearch",
+        "Search API (e.g. Translate, Transform, print)...",
+        searchBuf,
+        sizeof(searchBuf)
+    );
+
+    ImGui::Separator();
+
+    std::string query = searchBuf;
+    std::transform(query.begin(), query.end(), query.begin(), ::tolower);
+
+    const auto& api = GetScriptAPI();
+
+    for (const auto& category : api)
+    {
+        // Check if category should be shown
+        bool categoryMatches =
+            query.empty() ||
+            category.name.find(query) != std::string::npos ||
+            category.description.find(query) != std::string::npos;
+
+        bool hasVisibleFunctions = false;
+
+        for (const auto& fn : category.functions)
+        {
+            std::string sig = fn.signature;
+            std::string desc = fn.description;
+
+            std::transform(sig.begin(), sig.end(), sig.begin(), ::tolower);
+            std::transform(desc.begin(), desc.end(), desc.begin(), ::tolower);
+
+            if (query.empty() ||
+                sig.find(query) != std::string::npos ||
+                desc.find(query) != std::string::npos)
+            {
+                hasVisibleFunctions = true;
+                break;
             }
         }
 
-        ImGui::SameLine();
+        if (!categoryMatches && !hasVisibleFunctions)
+            continue;
 
-        if (ImGui::Button("Cancel", ImVec2(120, 0)))
+        if (ImGui::CollapsingHeader(
+            category.name.c_str(),
+            ImGuiTreeNodeFlags_DefaultOpen))
         {
-            newScriptName[0] = '\0';
-            ImGui::CloseCurrentPopup();
-        }
+            if (!category.description.empty())
+            {
+                ImGui::TextDisabled("%s", category.description.c_str());
+                ImGui::Separator();
+            }
 
-        ImGui::EndPopup();
+            for (const auto& fn : category.functions)
+            {
+                std::string sig = fn.signature;
+                std::string desc = fn.description;
+
+                std::transform(sig.begin(), sig.end(), sig.begin(), ::tolower);
+                std::transform(desc.begin(), desc.end(), desc.begin(), ::tolower);
+
+                if (!query.empty() &&
+                    sig.find(query) == std::string::npos &&
+                    desc.find(query) == std::string::npos)
+                    continue;
+
+                if (ImGui::Selectable(fn.signature.c_str()))
+                {
+                    pendingScriptInsert = fn.signature;
+                    FocusScriptEditor();
+                }
+
+                ImGui::Indent();
+                ImGui::TextWrapped("%s", fn.description.c_str());
+                ImGui::Unindent();
+                ImGui::Separator();
+            }
+        }
     }
+
+    ImGui::End();
 }
 
+
+void Editor::FocusScriptEditor()
+{
+    ImGui::SetWindowFocus("Script Editor");
+}

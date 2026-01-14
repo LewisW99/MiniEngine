@@ -11,6 +11,7 @@ C:\Users\Lewis\source\repos\MiniEngine\Engine\ConfigReader.cpp;C:\Users\Lewis\so
 C:\Users\Lewis\source\repos\MiniEngine\Engine\Core\Memory\Allocator.cpp;C:\Users\Lewis\source\repos\MiniEngine\Engine\x64\Debug\Allocator.obj
 C:\Users\Lewis\source\repos\MiniEngine\Engine\DummyAllocator.cpp;C:\Users\Lewis\source\repos\MiniEngine\Engine\x64\Debug\DummyAllocator.obj
 C:\Users\Lewis\source\repos\MiniEngine\Engine\ECS\EntityManager.cpp;C:\Users\Lewis\source\repos\MiniEngine\Engine\x64\Debug\EntityManager.obj
+C:\Users\Lewis\source\repos\MiniEngine\Engine\EditorConsole.cpp;C:\Users\Lewis\source\repos\MiniEngine\Engine\x64\Debug\EditorConsole.obj
 C:\Users\Lewis\source\repos\MiniEngine\Engine\Engine.cpp;C:\Users\Lewis\source\repos\MiniEngine\Engine\x64\Debug\Engine.obj
 C:\Users\Lewis\source\repos\MiniEngine\Engine\FrustumCuller.cpp;C:\Users\Lewis\source\repos\MiniEngine\Engine\x64\Debug\FrustumCuller.obj
 C:\Users\Lewis\source\repos\MiniEngine\Engine\ImGuizmo.cpp;C:\Users\Lewis\source\repos\MiniEngine\Engine\x64\Debug\ImGuizmo.obj

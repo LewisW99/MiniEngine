@@ -10,6 +10,7 @@
 #include "../Engine/AssetDatabase/AssetDatabase.h"
 #include <imgui.h>
 #include "../Engine/Scripting/ScriptSystem.h"
+#include "../Engine/Scripting/ScriptTemplates.h"
 
 enum class AppState {
     Startup,
@@ -27,8 +28,18 @@ struct OpenScript
     std::string contents;
     std::vector<char> buffer;
     bool dirty = false;
+    bool hasError = false;
+    std::string lastError;
+    bool errorLogged = false;
+    int highlightLine = -1;
 };
 
+struct ScriptJumpRequest
+{
+    bool pending = false;
+    std::string scriptPath;
+    int line = -1;
+};
 
 //Manages docking and ECU panels
 class Editor
@@ -55,6 +66,8 @@ public:
 	EngineMode GetEngineMode() const { return engineMode; }
 
     ScriptSystem* scriptSystem = nullptr;
+    int scriptCursorPos = 0;
+    ScriptJumpRequest scriptJump;
 
 private:
     EntityManager* entityMgr = nullptr;
@@ -73,18 +86,23 @@ private:
     void DrawAssetsPanel();
     void BeginDockSpace();
 	void DrawCreateScriptPopup();
+    void DrawConsoleWindow();
+    void DrawScriptDocsPanel();
+
+    void FocusScriptEditor();
 
     void TogglePlayMode();
 
     void EnterPlayMode();
 	void ExitPlayMode();
 
-    void CreateLuaScript(const std::string& name);
+    void CreateLuaScript(const std::string& name, ScriptTemplate templateType);
 
     GLuint LoadTextureForPreview(AssetInfo& a);
 
 	EngineMode engineMode = EngineMode::Editor;
 
+    bool requestCreateScriptPopup = false;
     char newScriptName[64] = "";
 
     std::vector<OpenScript> openScripts;
@@ -94,5 +112,10 @@ private:
     void DrawScriptEditor();
     void OpenScriptFile(const std::string& path);
     void SaveScript(OpenScript& script);
+    ScriptTemplate selectedScriptTemplate = ScriptTemplate::Empty;
+
+    std::string pendingScriptInsert;
+
+    int FindOrOpenScript(const std::string& path);
 
 };

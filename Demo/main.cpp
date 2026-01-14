@@ -3,6 +3,7 @@
 #include <thread>
 #include <vector>
 
+
 #include "../Engine/Core/Memory/LinearAllocator.h"
 #include "../Engine/Core/Memory/StackAllocator.h"
 #include "../Engine/Core/Memory/PoolAllocator.h"
@@ -53,6 +54,7 @@ Allocator* createAllocator(const std::unordered_map<std::string, std::string>& c
     return nullptr;
 }
 
+
 // ------------------------------------------------------------
 // Main runtime
 // ------------------------------------------------------------
@@ -62,6 +64,8 @@ int main() {
         std::cerr << "Failed to init SDL: " << SDL_GetError() << std::endl;
         return -1;
     }
+
+
 
     StartupScreen startupScreen;
     std::string currentProjectPath;

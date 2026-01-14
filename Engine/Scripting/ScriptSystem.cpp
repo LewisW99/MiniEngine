@@ -3,7 +3,9 @@
 #include "ScriptComponent.h"
 #include "../../Demo/Editor/Managers/ProjectManager.h"
 #include "../TransformSystem.h"
+#include "../EditorConsole.h"
 #include <iostream>
+#include <optional>
 
 extern "C"
 {
@@ -12,11 +14,71 @@ extern "C"
 #include <lualib.h>
 #include "LuaEntity.h"
 
+
 }
 
 static ScriptSystem* s_Instance = nullptr;
 
 static int Lua_Translate(lua_State* L);
+
+static int Lua_Print(lua_State* L)
+{
+    int n = lua_gettop(L);
+    std::string out;
+
+    for (int i = 1; i <= n; ++i)
+    {
+        const char* str = lua_tostring(L, i);
+        if (str)
+            out += str;
+
+        if (i < n)
+            out += " ";
+    }
+
+    EditorConsole::Log(out);
+    return 0;
+}
+
+static std::optional<ScriptError> ParseLuaError(
+    const std::string& luaError,
+    const std::string& scriptPath,
+    bool runtime)
+{
+    // Example:
+    // [string "Scripts/Player.lua"]:6: ')' expected near '0'
+
+    ScriptError err;
+    err.scriptPath = scriptPath;
+    err.runtime = runtime;
+
+    size_t linePos = luaError.find("\"]:");
+    if (linePos == std::string::npos)
+        return std::nullopt;
+
+    linePos += 3;
+    err.line = std::stoi(luaError.substr(linePos));
+
+    size_t msgPos = luaError.find(":", linePos);
+    if (msgPos != std::string::npos)
+        err.message = luaError.substr(msgPos + 1);
+    else
+        err.message = luaError;
+
+    return err;
+}
+
+
+static int LuaTraceback(lua_State* L)
+{
+    const char* msg = lua_tostring(L, 1);
+    if (msg)
+        luaL_traceback(L, L, msg, 1);
+    else
+        lua_pushliteral(L, "Unknown Lua error");
+
+    return 1;
+}
 
 ScriptSystem& ScriptSystem::Get()
 {
@@ -35,6 +97,8 @@ void ScriptSystem::Init(ComponentManager* cm)
     lua_pushcfunction(m_L, Lua_Translate);
     lua_setfield(m_L, -2, "Translate");
     lua_setglobal(m_L, "Transform");
+    lua_pushcfunction(m_L, Lua_Print);
+    lua_setglobal(m_L, "print");
 }
 
 void ScriptSystem::Shutdown()
@@ -59,13 +123,13 @@ void ScriptSystem::LoadScript(ScriptComponent& script)
 {
     if (!m_L)
     {
-        std::cerr << "[ScriptSystem] Lua state is NULL\n";
+        EditorConsole::Error("[ScriptSystem] Lua state is NULL");
         return;
     }
 
     if (!ProjectManager::HasActiveProject())
     {
-        std::cerr << "[ScriptSystem] No active project\n";
+        EditorConsole::Error("[ScriptSystem] No active project");
         return;
     }
 
@@ -76,15 +140,31 @@ void ScriptSystem::LoadScript(ScriptComponent& script)
 
     if (!std::filesystem::exists(fullPath))
     {
-        std::cerr << "[Lua] Script not found: "
-            << fullPath.string() << "\n";
+        EditorConsole::Error(
+            "[Lua] Script not found: " + fullPath.string());
         return;
     }
 
     if (luaL_dofile(m_L, fullPath.string().c_str()) != LUA_OK)
     {
-        std::cerr << "[Lua] "
-            << lua_tostring(m_L, -1) << "\n";
+        const char* err = lua_tostring(m_L, -1);
+        std::string errStr = err ? err : "[Lua] Unknown script error";
+
+        if (auto parsed = ParseLuaError(errStr, script.ScriptPath, false))
+        {
+            EditorConsole::Error(
+                errStr,
+                parsed->scriptPath,
+                parsed->line
+            );
+
+            m_Errors.push_back(*parsed);
+        }
+        else
+        {
+            EditorConsole::Error(errStr);
+        }
+
         lua_pop(m_L, 1);
         return;
     }
@@ -93,26 +173,57 @@ void ScriptSystem::LoadScript(ScriptComponent& script)
     script.OnUpdate = GetFunctionRef("OnUpdate");
     script.OnDestroy = GetFunctionRef("OnDestroy");
     script.Started = false;
+
+    EditorConsole::Log(
+        "[Lua] Loaded script: " + script.ScriptPath);
 }
+
 
 void ScriptSystem::CallFunction(int fnRef, Entity entity, float dt)
 {
-    if (fnRef == -1) return;
+    if (fnRef == LUA_REFNIL || fnRef == -1)
+        return;
 
+    // Push error handler
+    lua_pushcfunction(m_L, LuaTraceback);
+    int errFunc = lua_gettop(m_L);
+
+    // Push function
     lua_rawgeti(m_L, LUA_REGISTRYINDEX, fnRef);
 
-    // push self
+    // Push self
     LuaEntity* le = (LuaEntity*)lua_newuserdata(m_L, sizeof(LuaEntity));
     le->entity = entity;
 
-    // push dt
+    // Push dt
     lua_pushnumber(m_L, dt);
 
-    if (lua_pcall(m_L, 2, 0, 0) != LUA_OK)
+    // Call function with error handler
+    if (lua_pcall(m_L, 2, 0, errFunc) != LUA_OK)
     {
-        std::cerr << "[Lua] " << lua_tostring(m_L, -1) << "\n";
+        const char* err = lua_tostring(m_L, -1);
+        std::string errStr = err ? err : "[Lua] Runtime error";
+
+        if (auto parsed = ParseLuaError(errStr, "<runtime>", true))
+        {
+            EditorConsole::Error(
+                errStr,
+                parsed->scriptPath,
+                parsed->line
+            );
+
+            m_Errors.push_back(*parsed);
+        }
+        else
+        {
+            EditorConsole::Error(errStr);
+        }
+
         lua_pop(m_L, 1);
     }
+
+    // Remove error handler
+    lua_remove(m_L, errFunc);
 }
 
 void ScriptSystem::Update(Entity entity, ScriptComponent& script, float dt)
@@ -124,6 +235,27 @@ void ScriptSystem::Update(Entity entity, ScriptComponent& script, float dt)
     }
 
     CallFunction(script.OnUpdate, entity, dt);
+}
+
+bool ScriptSystem::ValidateScriptText(
+    const std::string& text,
+    std::string& outError)
+{
+    lua_State* L = luaL_newstate();
+    luaL_openlibs(L);
+
+    if (luaL_loadstring(L, text.c_str()) != LUA_OK)
+    {
+        outError = lua_tostring(L, -1);
+
+        
+
+        lua_close(L);
+        return false;
+    }
+
+    lua_close(L);
+    return true;
 }
 
 static int Lua_Translate(lua_State* L)
