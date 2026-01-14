@@ -129,9 +129,6 @@
         {
             "id": 6,
             "name": "Entity 6",
-            "script": {
-                "path": "Scripts/King.lua"
-            },
             "transform": {
                 "position": [
                     5.0,

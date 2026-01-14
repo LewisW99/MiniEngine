@@ -41,6 +41,8 @@
 #include "../Engine/PhysicsSystem.h"
 #include "../Engine/Scripting/ScriptComponent.h"
 #include "../Engine/Scripting/ScriptSystem.h"
+#include "../Engine/InputSystem.h"
+#include "../Engine/EditorConsole.h"
 
 // ------------------------------------------------------------
 // Helper
@@ -64,6 +66,7 @@ int main() {
         std::cerr << "Failed to init SDL: " << SDL_GetError() << std::endl;
         return -1;
     }
+
 
 
 
@@ -142,6 +145,16 @@ int main() {
     components.RegisterComponent<PhysicsComponent>();
 	components.RegisterComponent<ScriptComponent>();
 
+    InputSystem inputSystem;
+    inputSystem.Init();
+
+    // TEMP bindings (Phase 1)
+    inputSystem.BindAction("MoveForward", SDL_SCANCODE_W);
+    inputSystem.BindAction("MoveBackward", SDL_SCANCODE_S);
+    inputSystem.BindAction("MoveLeft", SDL_SCANCODE_A);
+    inputSystem.BindAction("MoveRight", SDL_SCANCODE_D);
+    inputSystem.BindAction("Jump", SDL_SCANCODE_SPACE);
+
     ScriptSystem scriptSystem;
     scriptSystem.Init(&components);
 
@@ -183,9 +196,9 @@ int main() {
 
     // ---------------- Main Loop ----------------
     while (running) {
+        inputSystem.BeginFrame();
         // --- Input events ---
         float mouseDX = 0, mouseDY = 0;
-        const Uint8* keystate = SDL_GetKeyboardState(NULL);
 
         while (SDL_PollEvent(&event)) {
             ImGui_ImplSDL2_ProcessEvent(&event);
@@ -201,6 +214,15 @@ int main() {
                 camera.SetAspect((float)windowW, (float)windowH);
             }
 
+            if (event.type == SDL_KEYDOWN && !event.key.repeat)
+            {
+                inputSystem.OnKeyDown(event.key.keysym.scancode);
+            }
+            else if (event.type == SDL_KEYUP)
+            {
+                inputSystem.OnKeyUp(event.key.keysym.scancode);
+            }
+
             if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_RIGHT) {
                 rightMouseHeld = true;
                 SDL_SetRelativeMouseMode(SDL_TRUE);
@@ -213,18 +235,24 @@ int main() {
                 mouseDX = (float)event.motion.xrel;
                 mouseDY = (float)event.motion.yrel;
             }
+
+            if (inputSystem.Pressed("Jump"))
+            {
+                EditorConsole::Log("[Input] Jump pressed");
+            }
+
+            if (inputSystem.Held("MoveForward"))
+            {
+                EditorConsole::Log("[Input] Holding MoveForward");
+            }
         }
+
+        
 
         auto now = std::chrono::high_resolution_clock::now();
         float dt = std::chrono::duration<float>(now - last).count();
         last = now;
 
-        bool forward = keystate[SDL_SCANCODE_W];
-        bool backward = keystate[SDL_SCANCODE_S];
-        bool left = keystate[SDL_SCANCODE_A];
-        bool right = keystate[SDL_SCANCODE_D];
-        bool up = keystate[SDL_SCANCODE_E];
-        bool down = keystate[SDL_SCANCODE_Q];
 
         if (editor.GetEngineMode() == EngineMode::Play)
         {
