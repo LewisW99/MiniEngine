@@ -40,6 +40,12 @@
     <Filter Include="Rendering">
       <UniqueIdentifier>{cb66aa66-0531-4a05-9a1e-8076ef6c2ea0}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Scripting">
+      <UniqueIdentifier>{170eb6b7-9ec7-4c06-880c-71a64a9750a8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Templates">
+      <UniqueIdentifier>{97dd77a6-27d8-4648-96fd-6dcce62133a9}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="framework.h">
@@ -147,6 +153,15 @@
     <ClInclude Include="PhysicsSystem.h">
       <Filter>Core\Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Scripting\LuaTest.h">
+      <Filter>Scripting</Filter>
+    </ClInclude>
+    <ClInclude Include="Scripting\ScriptSystem.h">
+      <Filter>Scripting</Filter>
+    </ClInclude>
+    <ClInclude Include="Scripting\LuaEntity.h">
+      <Filter>Scripting</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Engine.cpp">
@@ -224,5 +239,19 @@
     <ClCompile Include="PhysicsSystem.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Scripting\LuaTest.cpp">
+      <Filter>Scripting</Filter>
+    </ClCompile>
+    <ClCompile Include="Scripting\ScriptSystem.cpp">
+      <Filter>Scripting</Filter>
+    </ClCompile>
+    <ClCompile Include="Scripting\ScriptComponent.h">
+      <Filter>Scripting</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Templates\LuaScriptTemplate.lua">
+      <Filter>Templates</Filter>
+    </None>
   </ItemGroup>
 </Project>

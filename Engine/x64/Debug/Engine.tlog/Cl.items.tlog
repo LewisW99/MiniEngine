@@ -21,5 +21,8 @@ C:\Users\Lewis\source\repos\MiniEngine\Engine\ProfilerOverlay.cpp;C:\Users\Lewis
 C:\Users\Lewis\source\repos\MiniEngine\Engine\Renderer.cpp;C:\Users\Lewis\source\repos\MiniEngine\Engine\x64\Debug\Renderer.obj
 C:\Users\Lewis\source\repos\MiniEngine\Engine\SceneCullingDemo.cpp;C:\Users\Lewis\source\repos\MiniEngine\Engine\x64\Debug\SceneCullingDemo.obj
 C:\Users\Lewis\source\repos\MiniEngine\Engine\SceneNode.cpp;C:\Users\Lewis\source\repos\MiniEngine\Engine\x64\Debug\SceneNode.obj
+C:\Users\Lewis\source\repos\MiniEngine\Engine\Scripting\LuaTest.cpp;C:\Users\Lewis\source\repos\MiniEngine\Engine\x64\Debug\LuaTest.obj
+C:\Users\Lewis\source\repos\MiniEngine\Engine\Scripting\ScriptComponent.h;C:\Users\Lewis\source\repos\MiniEngine\Engine\x64\Debug\ScriptComponent.obj
+C:\Users\Lewis\source\repos\MiniEngine\Engine\Scripting\ScriptSystem.cpp;C:\Users\Lewis\source\repos\MiniEngine\Engine\x64\Debug\ScriptSystem.obj
 C:\Users\Lewis\source\repos\MiniEngine\Engine\Shader.cpp;C:\Users\Lewis\source\repos\MiniEngine\Engine\x64\Debug\Shader.obj
 C:\Users\Lewis\source\repos\MiniEngine\Engine\ThreadPool.cpp;C:\Users\Lewis\source\repos\MiniEngine\Engine\x64\Debug\ThreadPool.obj

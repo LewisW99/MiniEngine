@@ -5,6 +5,7 @@
 #include "../Engine/ECS/ComponentManager.h"
 #include "../Engine/ECS/EntityMeta.h"
 #include "../Engine/Components/Physics/PhysicsComponent.h"
+#include "../Engine/Scripting/ScriptComponent.h"
 
 using json = nlohmann::json;
 
@@ -51,6 +52,14 @@ public:
                 entry["physics"] = {
                     { "enabled", p.enabled },
                     { "mass",    p.mass }
+                };
+            }
+
+            if (comps.HasComponent<ScriptComponent>(e))
+            {
+                const auto& s = comps.GetComponent<ScriptComponent>(e);
+                entry["script"] = {
+                    { "path", s.ScriptPath }
                 };
             }
 
@@ -105,6 +114,14 @@ public:
                 p.mass = entry["physics"].value("mass", 1.0f);
 
                 comps.AddComponent(e, p);
+            }
+
+            if (entry.contains("script"))
+            {
+                ScriptComponent s;
+                s.ScriptPath = entry["script"].value("path", "");
+
+                comps.AddComponent(e, s);
             }
         }
     }

@@ -177,6 +177,9 @@
     <ProjectReference Include="..\Engine\Engine.vcxproj">
       <Project>{554dcf1e-b61a-457d-87d0-c6d9be09aa85}</Project>
     </ProjectReference>
+    <ProjectReference Include="..\Engine\ThirdParty\lua\lua\lua.vcxproj">
+      <Project>{147a36b5-7415-4519-a896-3c6b13356fb8}</Project>
+    </ProjectReference>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Editor.h" />

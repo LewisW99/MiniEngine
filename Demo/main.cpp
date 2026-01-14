@@ -22,6 +22,8 @@
 #include "../Engine/Rendering/Camera.h"
 #include "Editor.h"
 
+#include "../Engine/Scripting/LuaTest.h"
+
 #include <GL/glew.h>
 #include "imgui.h"
 #include <imgui_internal.h>
@@ -36,6 +38,8 @@
 #include "Editor/Projects/RecentProjects.h"
 #include "../Engine/Components/Physics/PhysicsComponent.h"
 #include "../Engine/PhysicsSystem.h"
+#include "../Engine/Scripting/ScriptComponent.h"
+#include "../Engine/Scripting/ScriptSystem.h"
 
 // ------------------------------------------------------------
 // Helper
@@ -132,6 +136,11 @@ int main() {
     ComponentManager components;
     components.RegisterComponent<TransformComponent>();
     components.RegisterComponent<PhysicsComponent>();
+	components.RegisterComponent<ScriptComponent>();
+
+    ScriptSystem scriptSystem;
+    scriptSystem.Init(&components);
+
 
     for (int i = 0; i < 8; ++i) {
         Entity e = entities.CreateEntity();
@@ -139,6 +148,21 @@ int main() {
         t.position = { float(i * 2 - 7), 0, float(i * 2 - 7) };
         components.AddComponent(e, t);
     }
+
+    Entity player = entities.CreateEntity();
+
+    TransformComponent t;
+    components.AddComponent(player, t);
+
+    ScriptComponent sc;
+    sc.ScriptPath = "Scripts/Test.lua";
+    components.AddComponent(player, sc);
+
+    scriptSystem.LoadScript(
+        components.GetComponent<ScriptComponent>(player)
+    );
+
+	//RunLuaSmokeTest();
 
     AsyncLoader loader(jobSystem);
     StreamingManager streamer(jobSystem);
@@ -148,7 +172,7 @@ int main() {
     SDL_Event event;
     auto last = std::chrono::high_resolution_clock::now();
 
-    Editor editor(&entities, &components, &renderer, &camera, &streamer);
+    Editor editor(&entities, &components, &renderer, &camera, &streamer, &scriptSystem);
 
     int windowW = 1920;
     int windowH = 1080;
@@ -198,10 +222,23 @@ int main() {
         bool up = keystate[SDL_SCANCODE_E];
         bool down = keystate[SDL_SCANCODE_Q];
 
-        if (editor.GetEngineMode() == EngineMode::Editor)
+        if (editor.GetEngineMode() == EngineMode::Play)
         {
-            camera.Update(forward, backward, left, right, up, down, mouseDX, mouseDY, dt);
-            TransformSystem::Update(components, jobSystem);
+            PhysicsSystem::Update(entities, components, dt);
+
+            for (EntityID id = 0; id < entities.GetMaxEntities(); ++id)
+            {
+                Entity e{ id }; // construct Entity properly
+
+                if (!entities.IsAlive(e))
+                    continue;
+
+                if (!components.HasComponent<ScriptComponent>(e))
+                    continue;
+
+                auto& sc = components.GetComponent<ScriptComponent>(e);
+                scriptSystem.Update(e, sc, dt);
+            }
         }
 
 
@@ -223,10 +260,7 @@ int main() {
         SDL_GetWindowSize(window, &windowW, &windowH);
         camera.SetAspect((float)windowW, (float)windowH);
 
-        if (editor.GetEngineMode() == EngineMode::Play)
-        {
-            PhysicsSystem::Update(entities, components, dt);
-        }
+        
 
         if (appState == AppState::Startup)
         {
@@ -303,6 +337,7 @@ int main() {
     SDL_DestroyWindow(window);
     SDL_Quit();
 
+	scriptSystem.Shutdown();
     delete allocator;
     return 0;
 }

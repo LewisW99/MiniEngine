@@ -3,19 +3,15 @@
         {
             "id": 0,
             "name": "Entity 0",
-            "physics": {
-                "enabled": true,
-                "mass": 1.0
-            },
             "transform": {
                 "position": [
                     -7.0,
-                    7.450580596923828e-09,
+                    0.0,
                     -7.0
                 ],
                 "rotation": [
                     0.0,
-                    -0.0,
+                    0.0,
                     0.0
                 ],
                 "scale": [
@@ -159,6 +155,30 @@
                     7.0,
                     0.0,
                     7.0
+                ],
+                "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                ],
+                "scale": [
+                    1.0,
+                    1.0,
+                    1.0
+                ]
+            }
+        },
+        {
+            "id": 8,
+            "name": "Entity 8",
+            "script": {
+                "path": "Scripts/Test.lua"
+            },
+            "transform": {
+                "position": [
+                    0.0,
+                    0.0,
+                    0.0
                 ],
                 "rotation": [
                     0.0,

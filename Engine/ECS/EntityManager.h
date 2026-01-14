@@ -15,6 +15,8 @@ public:
     bool IsAlive(Entity entity) const;
 
     void Clear();
+
+    uint32_t GetMaxEntities() const { return m_MaxEntities; }
 private:
     std::queue<EntityID> m_AvailableIDs;
     std::vector<bool>    m_Alive;

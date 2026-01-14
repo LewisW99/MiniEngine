@@ -9,6 +9,7 @@
 
 #include "../Engine/AssetDatabase/AssetDatabase.h"
 #include <imgui.h>
+#include "../Engine/Scripting/ScriptSystem.h"
 
 enum class AppState {
     Startup,
@@ -20,6 +21,15 @@ enum class EngineMode {
     Play
 };
 
+struct OpenScript
+{
+    std::string path;
+    std::string contents;
+    std::vector<char> buffer;
+    bool dirty = false;
+};
+
+
 //Manages docking and ECU panels
 class Editor
 {
@@ -28,7 +38,8 @@ public:
         ComponentManager* compMgr,
         Renderer* renderer,
         Camera* camera,
-        StreamingManager* streamer);
+        StreamingManager* streamer,
+        ScriptSystem* scripting);
 
     void Draw();
 
@@ -42,6 +53,8 @@ public:
     std::filesystem::path activeScenePath;
 
 	EngineMode GetEngineMode() const { return engineMode; }
+
+    ScriptSystem* scriptSystem = nullptr;
 
 private:
     EntityManager* entityMgr = nullptr;
@@ -59,13 +72,27 @@ private:
     void DrawDetails();
     void DrawAssetsPanel();
     void BeginDockSpace();
+	void DrawCreateScriptPopup();
 
     void TogglePlayMode();
 
     void EnterPlayMode();
 	void ExitPlayMode();
 
+    void CreateLuaScript(const std::string& name);
+
     GLuint LoadTextureForPreview(AssetInfo& a);
 
 	EngineMode engineMode = EngineMode::Editor;
+
+    char newScriptName[64] = "";
+
+    std::vector<OpenScript> openScripts;
+    int activeScriptIndex = -1;
+
+    // Script editor helpers
+    void DrawScriptEditor();
+    void OpenScriptFile(const std::string& path);
+    void SaveScript(OpenScript& script);
+
 };
