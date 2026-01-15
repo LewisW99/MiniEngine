@@ -14,6 +14,8 @@ struct ScriptError
 };
 
 class ComponentManager;
+class InputSystem;
+
 class ScriptSystem
 {
 public:
@@ -29,6 +31,11 @@ public:
 
     const std::vector<ScriptError>& GetErrors() const { return m_Errors; }
     void ClearErrors() { m_Errors.clear(); }
+
+
+    void SetInputSystem(InputSystem* input);
+    InputSystem* m_InputSystem = nullptr;
+
 private:
     struct lua_State* m_L = nullptr;
 
@@ -37,4 +44,5 @@ private:
     ComponentManager* components = nullptr;
     
     std::vector<ScriptError> m_Errors;
+
 };

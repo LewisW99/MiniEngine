@@ -27,4 +27,5 @@ C:\Users\Lewis\source\repos\MiniEngine\Engine\Scripting\LuaTest.cpp;C:\Users\Lew
 C:\Users\Lewis\source\repos\MiniEngine\Engine\Scripting\ScriptComponent.h;C:\Users\Lewis\source\repos\MiniEngine\Engine\x64\Debug\ScriptComponent.obj
 C:\Users\Lewis\source\repos\MiniEngine\Engine\Scripting\ScriptSystem.cpp;C:\Users\Lewis\source\repos\MiniEngine\Engine\x64\Debug\ScriptSystem.obj
 C:\Users\Lewis\source\repos\MiniEngine\Engine\Shader.cpp;C:\Users\Lewis\source\repos\MiniEngine\Engine\x64\Debug\Shader.obj
+C:\Users\Lewis\source\repos\MiniEngine\Engine\Systems\PlayerControllerSystem.cpp;C:\Users\Lewis\source\repos\MiniEngine\Engine\x64\Debug\PlayerControllerSystem.obj
 C:\Users\Lewis\source\repos\MiniEngine\Engine\ThreadPool.cpp;C:\Users\Lewis\source\repos\MiniEngine\Engine\x64\Debug\ThreadPool.obj

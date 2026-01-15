@@ -15,6 +15,10 @@ void InputSystem::BindAction(const std::string& action, int scancode)
 
 void InputSystem::BeginFrame()
 {
+    m_MouseDX = 0.0f;
+	m_MouseDY = 0.0f;
+
+
     for (auto& [name, action] : m_Actions)
     {
         if (action.state == InputActionState::Pressed)
@@ -28,6 +32,11 @@ void InputSystem::EndFrame() {}
 
 void InputSystem::OnKeyDown(int scancode)
 {
+    if (!s_GameplayEnabled)
+    {
+        return;
+    }
+
     for (auto& [name, action] : m_Actions)
     {
         if (action.key == scancode && !action.down)
@@ -40,6 +49,11 @@ void InputSystem::OnKeyDown(int scancode)
 
 void InputSystem::OnKeyUp(int scancode)
 {
+    if (!s_GameplayEnabled)
+    {
+        return;
+    }
+
     for (auto& [name, action] : m_Actions)
     {
         if (action.key == scancode)
@@ -69,6 +83,22 @@ bool InputSystem::Released(const std::string& action) const
     auto it = m_Actions.find(action);
     return it != m_Actions.end() &&
         it->second.state == InputActionState::Released;
+}
+
+void InputSystem::OnMouseMove(float dx, float dy)
+{
+    m_MouseDX += dx;
+    m_MouseDY += dy;
+}
+
+float InputSystem::GetMouseDX() const
+{
+    return m_MouseDX;
+}
+
+float InputSystem::GetMouseDY() const
+{
+    return m_MouseDY;
 }
 
 

@@ -43,6 +43,8 @@
 #include "../Engine/Scripting/ScriptSystem.h"
 #include "../Engine/InputSystem.h"
 #include "../Engine/EditorConsole.h"
+#include "../Engine/Components/PlayerControllerComponent.h"
+#include "../Engine/Systems/PlayerControllerSystem.h"
 
 // ------------------------------------------------------------
 // Helper
@@ -144,9 +146,11 @@ int main() {
     components.RegisterComponent<TransformComponent>();
     components.RegisterComponent<PhysicsComponent>();
 	components.RegisterComponent<ScriptComponent>();
+    components.RegisterComponent<PlayerControllerComponent>();
 
     InputSystem inputSystem;
     inputSystem.Init();
+   
 
     // TEMP bindings (Phase 1)
     inputSystem.BindAction("MoveForward", SDL_SCANCODE_W);
@@ -157,6 +161,7 @@ int main() {
 
     ScriptSystem scriptSystem;
     scriptSystem.Init(&components);
+    scriptSystem.SetInputSystem(&inputSystem);
 
 
     for (int i = 0; i < 8; ++i) {
@@ -170,6 +175,11 @@ int main() {
 
     TransformComponent t;
     components.AddComponent(player, t);
+
+    PlayerControllerComponent pc;
+    pc.moveSpeed = 6.0f;   // tweak freely
+    pc.lookSpeed = 0.15f;
+    components.AddComponent(player, pc);
 
     ScriptComponent sc;
     sc.ScriptPath = "Scripts/Test.lua";
@@ -199,6 +209,14 @@ int main() {
         inputSystem.BeginFrame();
         // --- Input events ---
         float mouseDX = 0, mouseDY = 0;
+
+        //ImGuiIO& io = ImGui::GetIO();
+        //// Block gameplay input when ImGui is interacting
+        //inputSystem.SetGameplayEnabled(
+        //    editor.GetEngineMode() == EngineMode::Play &&
+        //    !io.WantCaptureKeyboard &&
+        //    !io.WantCaptureMouse
+        //);
 
         while (SDL_PollEvent(&event)) {
             ImGui_ImplSDL2_ProcessEvent(&event);
@@ -231,9 +249,12 @@ int main() {
                 rightMouseHeld = false;
                 SDL_SetRelativeMouseMode(SDL_FALSE);
             }
-            if (event.type == SDL_MOUSEMOTION && rightMouseHeld) {
-                mouseDX = (float)event.motion.xrel;
-                mouseDY = (float)event.motion.yrel;
+            if (event.type == SDL_MOUSEMOTION && rightMouseHeld)
+            {
+                inputSystem.OnMouseMove(
+                    (float)event.motion.xrel,
+                    (float)event.motion.yrel
+                );
             }
 
             if (inputSystem.Pressed("Jump"))
@@ -257,6 +278,13 @@ int main() {
         if (editor.GetEngineMode() == EngineMode::Play)
         {
             PhysicsSystem::Update(entities, components, dt);
+
+            PlayerControllerSystem::Update(
+                entities,
+                components,
+                inputSystem,
+                dt
+            );
 
             for (EntityID id = 0; id < entities.GetMaxEntities(); ++id)
             {
