@@ -6,6 +6,7 @@
 #include "../Engine/ECS/EntityMeta.h"
 #include "../Engine/Components/Physics/PhysicsComponent.h"
 #include "../Engine/Components/PlayerControllerComponent.h"
+#include "../Engine/Components/CameraFollowComponent.h"
 #include "../Engine/Scripting/ScriptComponent.h"
 
 using json = nlohmann::json;
@@ -72,6 +73,19 @@ public:
                     { "lookSpeed", pc.lookSpeed }
                 };
             }
+
+            // -------- Camera Follow --------
+            if (comps.HasComponent<CameraFollowComponent>(e))
+            {
+                const auto& c = comps.GetComponent<CameraFollowComponent>(e);
+                entry["cameraFollow"] = {
+                    { "target",  c.target.id },
+                    { "distance", c.distance },
+                    { "height", c.height },
+                    { "smoothness", c.smoothness }
+                };
+            }
+
 
             root["entities"].push_back(entry);
         }
@@ -142,6 +156,22 @@ public:
 
                 comps.AddComponent(e, pc);
             }
+
+            // -------- Camera Follow --------
+            if (entry.contains("cameraFollow"))
+            {
+                CameraFollowComponent c;
+                uint32_t targetId =
+                    entry["cameraFollow"].value("target", uint32_t{ 0 });
+
+                c.target = Entity{ targetId };
+                c.distance = entry["cameraFollow"].value("distance", 5.0f);
+                c.height = entry["cameraFollow"].value("height", 2.0f);
+                c.smoothness = entry["cameraFollow"].value("smoothness", 10.0f);
+
+                comps.AddComponent(e, c);
+            }
+
         }
     }
 };

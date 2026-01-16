@@ -10,15 +10,21 @@ void PhysicsSystem::Update(EntityManager& entities, ComponentManager& comps, flo
     for (uint32_t id = 0; id < 10000; ++id)
     {
         Entity e{ id };
-        if (!entities.IsAlive(e))
-            continue;
 
-        if (!comps.HasComponent<TransformComponent>(e) ||
-            !comps.HasComponent<PhysicsComponent>(e))
-            continue;
+    if (!entities.IsAlive(e))
+        continue;
 
-        auto& transform = comps.GetComponent<TransformComponent>(e);
-        auto& physics = comps.GetComponent<PhysicsComponent>(e);
+    if (!comps.HasComponent<PhysicsComponent>(e))
+        continue;
+
+    if (!comps.HasComponent<TransformComponent>(e))
+        continue;
+
+    auto& physics =
+        comps.GetComponent<PhysicsComponent>(e);
+
+    auto& transform =
+        comps.GetComponent<TransformComponent>(e);
 
         if (!physics.enabled)
             continue;

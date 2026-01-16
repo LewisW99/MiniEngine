@@ -3,6 +3,7 @@
 #include <unordered_map>
 #include <typeindex>
 #include "ComponentArray.h"
+#include <iostream>
 
 // ------------------------------------------------------------
 // ComponentManager — owns all component arrays by type
@@ -10,11 +11,31 @@
 class ComponentManager {
 public:
     template<typename T>
-    void RegisterComponent()
+    void RegisterComponent(const char* debugName = nullptr)
     {
         std::type_index ti = typeid(T);
-        if (m_ComponentArrays.find(ti) == m_ComponentArrays.end())
-            m_ComponentArrays[ti] = std::make_shared<ComponentArray<T>>();
+
+        if (m_ComponentArrays.find(ti) != m_ComponentArrays.end())
+        {
+            std::cerr
+                << "[ComponentManager] "
+                << (debugName ? debugName : ti.name())
+                << " already registered\n";
+            return;
+        }
+
+        std::cerr
+            << "[ComponentManager] Registering "
+            << (debugName ? debugName : ti.name())
+            << "...\n";
+
+        m_ComponentArrays[ti] =
+            std::make_shared<ComponentArray<T>>();
+
+        std::cerr
+            << "[ComponentManager] "
+            << (debugName ? debugName : ti.name())
+            << " registered OK\n";
     }
 
     template<typename T>
@@ -54,7 +75,6 @@ public:
             array->Clear();
     }
 
-    // -------- FIXED HasComponent --------
     template<typename T>
     bool HasComponent(Entity entity) const
     {
@@ -66,6 +86,25 @@ public:
             static_cast<const ComponentArray<T>*>(it->second.get());
 
         return array->HasData(entity);
+    }
+    template<typename T>
+    bool IsComponentRegistered() const
+    {
+        return m_ComponentArrays.find(
+            std::type_index(typeid(T))
+        ) != m_ComponentArrays.end();
+    }
+
+    void DumpRegisteredComponents() const
+    {
+        std::cerr << "---- Registered Components ----\n";
+
+        for (const auto& [type, array] : m_ComponentArrays)
+        {
+            std::cerr << "  " << type.name() << "\n";
+        }
+
+        std::cerr << "--------------------------------\n";
     }
 
 private:

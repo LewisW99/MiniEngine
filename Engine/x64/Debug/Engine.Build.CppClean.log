@@ -12,7 +12,8 @@ c:\users\lewis\source\repos\miniengine\engine\x64\debug\imgui_demo.obj
 c:\users\lewis\source\repos\miniengine\engine\x64\debug\imgui.obj
 c:\users\lewis\source\repos\miniengine\engine\x64\debug\imgui_impl_sdl2.obj
 c:\users\lewis\source\repos\miniengine\engine\x64\debug\imgui_impl_opengl3.obj
-c:\users\lewis\source\repos\miniengine\engine\x64\debug\threadpool.obj
+c:\users\lewis\source\repos\miniengine\engine\x64\debug\playercontrollersystem.obj
+c:\users\lewis\source\repos\miniengine\engine\x64\debug\cameracontrollersystem.obj
 c:\users\lewis\source\repos\miniengine\engine\x64\debug\shader.obj
 c:\users\lewis\source\repos\miniengine\engine\x64\debug\scriptsystem.obj
 c:\users\lewis\source\repos\miniengine\engine\x64\debug\scenenode.obj
@@ -31,7 +32,7 @@ c:\users\lewis\source\repos\miniengine\engine\x64\debug\allocator.obj
 c:\users\lewis\source\repos\miniengine\engine\x64\debug\configreader.obj
 c:\users\lewis\source\repos\miniengine\engine\x64\debug\assetimporter.obj
 c:\users\lewis\source\repos\miniengine\engine\x64\debug\assetdatabase.obj
-c:\users\lewis\source\repos\miniengine\engine\x64\debug\playercontrollersystem.obj
+c:\users\lewis\source\repos\miniengine\engine\x64\debug\threadpool.obj
 c:\users\lewis\source\repos\miniengine\x64\debug\engine.lib
 c:\users\lewis\source\repos\miniengine\engine\x64\debug\engine.tlog\cl.command.1.tlog
 c:\users\lewis\source\repos\miniengine\engine\x64\debug\engine.tlog\cl.items.tlog

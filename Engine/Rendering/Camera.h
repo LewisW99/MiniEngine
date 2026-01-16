@@ -73,4 +73,20 @@ public:
     // Utility
     // ------------------------------------------------------------
     void SetAspect(float width, float height) { aspect = width / height; }
+
+    void LookAt(const glm::vec3& target)
+    {
+        glm::vec3 dir = glm::normalize(target - position);
+        forward = dir;
+
+        // Derive yaw / pitch from forward
+        yaw = glm::degrees(atan2(dir.z, dir.x)) - 90.0f;
+        pitch = glm::degrees(asin(dir.y));
+    }
+
+    void LookAt(float x, float y, float z)
+    {
+        LookAt(glm::vec3(x, y, z));
+    }
+
 };

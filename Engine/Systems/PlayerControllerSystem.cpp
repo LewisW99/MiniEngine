@@ -1,19 +1,22 @@
 #include "pch.h"
 #include "PlayerControllerSystem.h"
+
 #include "../Components/PlayerControllerComponent.h"
+#include "../Components/CameraFollowComponent.h"
 #include "../TransformSystem.h"
-#include <cmath>
+#include "../Rendering/CameraMode.h"
+
+#include <glm/glm.hpp>
+#include <glm/gtc/constants.hpp>
 
 void PlayerControllerSystem::Update(
     EntityManager& entities,
     ComponentManager& components,
     InputSystem& input,
+    Camera& camera,
     float dt
 )
 {
-    if (!input.IsGameplayEnabled())
-        return;
-
     for (EntityID id = 0; id < entities.GetMaxEntities(); ++id)
     {
         Entity e{ id };
@@ -27,33 +30,81 @@ void PlayerControllerSystem::Update(
         if (!components.HasComponent<TransformComponent>(e))
             continue;
 
-        auto& controller =
-            components.GetComponent<PlayerControllerComponent>(e);
-        auto& transform =
-            components.GetComponent<TransformComponent>(e);
+        auto& pc = components.GetComponent<PlayerControllerComponent>(e);
+        auto& transform = components.GetComponent<TransformComponent>(e);
 
-        // ---------------- Movement ----------------
-        float moveX = 0.0f;
-        float moveZ = 0.0f;
 
-        if (input.Held("MoveForward"))  moveZ -= 1.0f;
-        if (input.Held("MoveBackward")) moveZ += 1.0f;
-        if (input.Held("MoveLeft"))     moveX -= 1.0f;
-        if (input.Held("MoveRight"))    moveX += 1.0f;
 
-        // Normalize so diagonals aren’t faster
-        float length = std::sqrt(moveX * moveX + moveZ * moveZ);
-        if (length > 0.0f)
+        float moveX = input.GetAxis("MoveX");
+        float moveZ = input.GetAxis("MoveZ");
+
+        if (moveX != 0.0f || moveZ != 0.0f)
         {
-            moveX /= length;
-            moveZ /= length;
+            glm::vec3 camForward = camera.forward;
+            camForward.y = 0.0f;
+
+            if (glm::length(camForward) > 0.0f)
+                camForward = glm::normalize(camForward);
+
+            glm::vec3 camRight =
+                glm::normalize(glm::cross(camForward, camera.up));
+
+            glm::vec3 moveDir =
+                camForward * moveZ +
+                camRight * moveX;
+
+            if (glm::length(moveDir) > 0.0f)
+            {
+                moveDir = glm::normalize(moveDir);
+
+                glm::vec3 delta =
+                    moveDir * pc.moveSpeed * dt;
+
+                transform.position.x += delta.x;
+                transform.position.y += delta.y;
+                transform.position.z += delta.z;
+            }
         }
 
-        transform.position.x += moveX * controller.moveSpeed * dt;
-        transform.position.z += moveZ * controller.moveSpeed * dt;
 
-        // ---------------- Look (Yaw only for now) ----------------
-        float mouseDX = input.GetMouseDX();
-        transform.rotation.y += mouseDX * controller.lookSpeed;
+
+        if (pc.allowCameraSwitch && input.Pressed("ToggleCamera"))
+        {
+            pc.cameraMode =
+                (pc.cameraMode == CameraMode::ThirdPerson)
+                ? CameraMode::FirstPerson
+                : CameraMode::ThirdPerson;
+        }
+
+
+        float mouseDX = -input.GetMouseDX();
+        float mouseDY = input.GetMouseDY();
+
+        if (mouseDX != 0.0f || mouseDY != 0.0f)
+        {
+            if (pc.cameraMode == CameraMode::ThirdPerson)
+            {
+                // TPS: rotate player only
+                transform.rotation.y += mouseDX * pc.lookSpeed;
+            }
+            else // FIRST PERSON
+            {
+                // Rotate player yaw
+                transform.rotation.y += mouseDX * pc.lookSpeed;
+
+                // Rotate camera pitch + yaw
+                camera.yaw += mouseDX * camera.mouseSensitivity;
+                camera.pitch -= mouseDY * camera.mouseSensitivity;
+
+                camera.pitch = glm::clamp(camera.pitch, -89.0f, 89.0f);
+
+                // Recalculate camera forward vector
+                glm::vec3 dir;
+                dir.x = cos(glm::radians(camera.yaw)) * cos(glm::radians(camera.pitch));
+                dir.y = sin(glm::radians(camera.pitch));
+                dir.z = sin(glm::radians(camera.yaw)) * cos(glm::radians(camera.pitch));
+                camera.forward = glm::normalize(dir);
+            }
+        }
     }
 }

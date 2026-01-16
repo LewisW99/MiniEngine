@@ -1,9 +1,1 @@
-﻿  Editor.cpp
-C:\Users\Lewis\source\repos\MiniEngine\Demo\Editor.cpp(936,23): warning C4566: character represented by universal-character-name '\u2795' cannot be represented in the current code page (1252)
-C:\Users\Lewis\source\repos\MiniEngine\Demo\Editor.cpp(1069,31): warning C4566: character represented by universal-character-name '\U0001F5BC' cannot be represented in the current code page (1252)
-C:\Users\Lewis\source\repos\MiniEngine\Demo\Editor.cpp(1072,27): warning C4566: character represented by universal-character-name '\U0001F4E6' cannot be represented in the current code page (1252)
-C:\Users\Lewis\source\repos\MiniEngine\Demo\Editor.cpp(1074,27): warning C4566: character represented by universal-character-name '\U0001F3B5' cannot be represented in the current code page (1252)
-C:\Users\Lewis\source\repos\MiniEngine\Demo\Editor.cpp(1076,27): warning C4566: character represented by universal-character-name '\u2753' cannot be represented in the current code page (1252)
-  main.cpp
-  Generating Code...
-  Demo.vcxproj -> C:\Users\Lewis\source\repos\MiniEngine\x64\Debug\Demo.exe
+﻿  Demo.vcxproj -> C:\Users\Lewis\source\repos\MiniEngine\x64\Debug\Demo.exe
