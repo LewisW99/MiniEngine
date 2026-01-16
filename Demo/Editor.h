@@ -41,16 +41,14 @@ struct ScriptJumpRequest
     int line = -1;
 };
 
+class InputSystem;
+
 //Manages docking and ECU panels
 class Editor
 {
 public:
-    Editor(EntityManager* entityMgr,
-        ComponentManager* compMgr,
-        Renderer* renderer,
-        Camera* camera,
-        StreamingManager* streamer,
-        ScriptSystem* scripting);
+
+    Editor(EntityManager* entities, ComponentManager* components, Renderer* renderer, Camera* camera, StreamingManager* streamer, ScriptSystem* scriptSystem, InputSystem* inputSystem);
 
     void Draw();
 
@@ -75,6 +73,7 @@ private:
     Renderer* renderer = nullptr;
     Camera* camera = nullptr;             
     StreamingManager* streamer = nullptr;  
+    InputSystem* inputSystem = nullptr;
 
     Entity selectedEntity;
     EntityMeta meta;
@@ -90,6 +89,8 @@ private:
     void DrawScriptDocsPanel();
 
     void FocusScriptEditor();
+
+    void DrawInputDebug(InputSystem& input);
 
     void TogglePlayMode();
 
@@ -117,5 +118,7 @@ private:
     std::string pendingScriptInsert;
 
     int FindOrOpenScript(const std::string& path);
+
+    bool showInputDebug = false;
 
 };

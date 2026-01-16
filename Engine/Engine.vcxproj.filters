@@ -46,6 +46,15 @@
     <Filter Include="Templates">
       <UniqueIdentifier>{97dd77a6-27d8-4648-96fd-6dcce62133a9}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Input">
+      <UniqueIdentifier>{da4ebe6d-3c4c-40af-9d8c-442fccbf09c1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Components">
+      <UniqueIdentifier>{2972324d-3e0f-4c72-bf2b-8a699a3c49be}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Systems">
+      <UniqueIdentifier>{2a5d1be0-ad77-4223-97c6-4d31c4b0159f}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="framework.h">
@@ -168,6 +177,21 @@
     <ClInclude Include="Scripting\ScriptTemplates.h">
       <Filter>Scripting</Filter>
     </ClInclude>
+    <ClInclude Include="Input\InputTypes.h">
+      <Filter>Input</Filter>
+    </ClInclude>
+    <ClInclude Include="Input\InputAction.h">
+      <Filter>Input</Filter>
+    </ClInclude>
+    <ClInclude Include="InputSystem.h">
+      <Filter>Input</Filter>
+    </ClInclude>
+    <ClInclude Include="Components\PlayerControllerComponent.h">
+      <Filter>Components</Filter>
+    </ClInclude>
+    <ClInclude Include="Systems\PlayerControllerSystem.h">
+      <Filter>Systems</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Engine.cpp">
@@ -256,6 +280,12 @@
     </ClCompile>
     <ClCompile Include="EditorConsole.cpp">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="InputSystem.cpp">
+      <Filter>Input</Filter>
+    </ClCompile>
+    <ClCompile Include="Systems\PlayerControllerSystem.cpp">
+      <Filter>Systems</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

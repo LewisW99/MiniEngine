@@ -15,7 +15,9 @@
 #include "../Engine/Scripting/ScriptComponent.h"
 #include <sstream>
 #include "../Engine/EditorConsole.h"
+#include "../Engine/InputSystem.h"
 #include "Scripting/ScriptAPI.h"
+#include "../Engine/Components/PlayerControllerComponent.h"
 
 #pragma comment(lib, "Comdlg32.lib")
 
@@ -218,18 +220,20 @@ static std::vector<std::string> GetProjectLuaScripts()
 
 
 
-Editor::Editor(EntityManager* entityMgr,
-    ComponentManager* compMgr,
+Editor::Editor(EntityManager* entities,
+    ComponentManager* components,
     Renderer* renderer,
     Camera* camera,
     StreamingManager* streamer,
-    ScriptSystem* scripting)
-    : entityMgr(entityMgr),
-    compMgr(compMgr),
-    renderer(renderer),
-    camera(camera),
-    streamer(streamer),
-    scriptSystem(scripting)
+    ScriptSystem* scriptSystem,
+    InputSystem* inputSystem)
+    : entityMgr(entities)
+    , compMgr(components)
+    , renderer(renderer)
+    , camera(camera)
+    , streamer(streamer)
+    , scriptSystem(scriptSystem)
+    , inputSystem(inputSystem)
 {
 }
 
@@ -390,6 +394,17 @@ void Editor::Draw()
             ImGui::EndMenu();
         }
 
+        if (ImGui::BeginMenu("Debug"))
+        {
+            ImGui::MenuItem(
+                "Input Debug Overlay",
+                nullptr,
+                &showInputDebug
+            );
+
+            ImGui::EndMenu();
+        }
+
         if(ImGui::Button("Play"))
         {
             TogglePlayMode();
@@ -418,6 +433,7 @@ void Editor::Draw()
     DrawScriptEditor();
     DrawCreateScriptPopup();
 	DrawConsoleWindow();
+    DrawInputDebug(*inputSystem);
 }
 
 // scene view panel (center)
@@ -876,6 +892,30 @@ void Editor::DrawDetails()
         }
     }
 
+    if (compMgr->HasComponent<PlayerControllerComponent>(selectedEntity))
+    {
+        auto& pc =
+            compMgr->GetComponent<PlayerControllerComponent>(selectedEntity);
+
+        if (ImGui::CollapsingHeader("Player Controller", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            ImGui::DragFloat(
+                "Move Speed",
+                &pc.moveSpeed,
+                0.1f,
+                0.0f,
+                50.0f
+            );
+
+            ImGui::DragFloat(
+                "Look Speed",
+                &pc.lookSpeed,
+                0.01f,
+                0.0f,
+                5.0f
+            );
+        }
+    }
 
     ImGui::End();
 }
@@ -1758,4 +1798,36 @@ void Editor::DrawScriptDocsPanel()
 void Editor::FocusScriptEditor()
 {
     ImGui::SetWindowFocus("Script Editor");
+}
+
+void Editor::DrawInputDebug(InputSystem& input)
+{
+    if (!showInputDebug)
+        return;
+
+    ImGui::Begin("Input Debug", &showInputDebug);
+
+    ImGui::Text("Actions:");
+    ImGui::Separator();
+
+    for (const auto& [name, action] : input.GetActions())
+    {
+        const char* stateStr = "None";
+
+        switch (action.state)
+        {
+        case InputActionState::Pressed:  stateStr = "Pressed"; break;
+        case InputActionState::Held:     stateStr = "Held";    break;
+        case InputActionState::Released: stateStr = "Released"; break;
+        default: break;
+        }
+
+        ImGui::Text("%s : %s", name.c_str(), stateStr);
+    }
+
+    ImGui::Separator();
+    ImGui::Text("Mouse DX: %.2f", input.GetMouseDX());
+    ImGui::Text("Mouse DY: %.2f", input.GetMouseDY());
+
+    ImGui::End();
 }

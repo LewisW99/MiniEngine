@@ -21,6 +21,7 @@ c:\users\lewis\source\repos\miniengine\engine\x64\debug\renderer.obj
 c:\users\lewis\source\repos\miniengine\engine\x64\debug\profileroverlay.obj
 c:\users\lewis\source\repos\miniengine\engine\x64\debug\physicssystem.obj
 c:\users\lewis\source\repos\miniengine\engine\x64\debug\jobsystem.obj
+c:\users\lewis\source\repos\miniengine\engine\x64\debug\inputsystem.obj
 c:\users\lewis\source\repos\miniengine\engine\x64\debug\frustumculler.obj
 c:\users\lewis\source\repos\miniengine\engine\x64\debug\engine.obj
 c:\users\lewis\source\repos\miniengine\engine\x64\debug\editorconsole.obj
@@ -30,6 +31,7 @@ c:\users\lewis\source\repos\miniengine\engine\x64\debug\allocator.obj
 c:\users\lewis\source\repos\miniengine\engine\x64\debug\configreader.obj
 c:\users\lewis\source\repos\miniengine\engine\x64\debug\assetimporter.obj
 c:\users\lewis\source\repos\miniengine\engine\x64\debug\assetdatabase.obj
+c:\users\lewis\source\repos\miniengine\engine\x64\debug\playercontrollersystem.obj
 c:\users\lewis\source\repos\miniengine\x64\debug\engine.lib
 c:\users\lewis\source\repos\miniengine\engine\x64\debug\engine.tlog\cl.command.1.tlog
 c:\users\lewis\source\repos\miniengine\engine\x64\debug\engine.tlog\cl.items.tlog

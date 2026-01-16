@@ -41,6 +41,10 @@
 #include "../Engine/PhysicsSystem.h"
 #include "../Engine/Scripting/ScriptComponent.h"
 #include "../Engine/Scripting/ScriptSystem.h"
+#include "../Engine/InputSystem.h"
+#include "../Engine/EditorConsole.h"
+#include "../Engine/Components/PlayerControllerComponent.h"
+#include "../Engine/Systems/PlayerControllerSystem.h"
 
 // ------------------------------------------------------------
 // Helper
@@ -64,6 +68,7 @@ int main() {
         std::cerr << "Failed to init SDL: " << SDL_GetError() << std::endl;
         return -1;
     }
+
 
 
 
@@ -141,9 +146,22 @@ int main() {
     components.RegisterComponent<TransformComponent>();
     components.RegisterComponent<PhysicsComponent>();
 	components.RegisterComponent<ScriptComponent>();
+    components.RegisterComponent<PlayerControllerComponent>();
+
+    InputSystem inputSystem;
+    inputSystem.Init();
+   
+
+    // TEMP bindings (Phase 1)
+    inputSystem.BindAction("MoveForward", SDL_SCANCODE_W);
+    inputSystem.BindAction("MoveBackward", SDL_SCANCODE_S);
+    inputSystem.BindAction("MoveLeft", SDL_SCANCODE_A);
+    inputSystem.BindAction("MoveRight", SDL_SCANCODE_D);
+    inputSystem.BindAction("Jump", SDL_SCANCODE_SPACE);
 
     ScriptSystem scriptSystem;
     scriptSystem.Init(&components);
+    scriptSystem.SetInputSystem(&inputSystem);
 
 
     for (int i = 0; i < 8; ++i) {
@@ -157,6 +175,11 @@ int main() {
 
     TransformComponent t;
     components.AddComponent(player, t);
+
+    PlayerControllerComponent pc;
+    pc.moveSpeed = 6.0f;   // tweak freely
+    pc.lookSpeed = 0.15f;
+    components.AddComponent(player, pc);
 
     ScriptComponent sc;
     sc.ScriptPath = "Scripts/Test.lua";
@@ -176,16 +199,24 @@ int main() {
     SDL_Event event;
     auto last = std::chrono::high_resolution_clock::now();
 
-    Editor editor(&entities, &components, &renderer, &camera, &streamer, &scriptSystem);
+    Editor editor(&entities, &components, &renderer, &camera, &streamer, &scriptSystem, &inputSystem);
 
     int windowW = 1920;
     int windowH = 1080;
 
     // ---------------- Main Loop ----------------
     while (running) {
+        inputSystem.BeginFrame();
         // --- Input events ---
         float mouseDX = 0, mouseDY = 0;
-        const Uint8* keystate = SDL_GetKeyboardState(NULL);
+
+        //ImGuiIO& io = ImGui::GetIO();
+        //// Block gameplay input when ImGui is interacting
+        //inputSystem.SetGameplayEnabled(
+        //    editor.GetEngineMode() == EngineMode::Play &&
+        //    !io.WantCaptureKeyboard &&
+        //    !io.WantCaptureMouse
+        //);
 
         while (SDL_PollEvent(&event)) {
             ImGui_ImplSDL2_ProcessEvent(&event);
@@ -201,6 +232,15 @@ int main() {
                 camera.SetAspect((float)windowW, (float)windowH);
             }
 
+            if (event.type == SDL_KEYDOWN && !event.key.repeat)
+            {
+                inputSystem.OnKeyDown(event.key.keysym.scancode);
+            }
+            else if (event.type == SDL_KEYUP)
+            {
+                inputSystem.OnKeyUp(event.key.keysym.scancode);
+            }
+
             if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_RIGHT) {
                 rightMouseHeld = true;
                 SDL_SetRelativeMouseMode(SDL_TRUE);
@@ -209,26 +249,42 @@ int main() {
                 rightMouseHeld = false;
                 SDL_SetRelativeMouseMode(SDL_FALSE);
             }
-            if (event.type == SDL_MOUSEMOTION && rightMouseHeld) {
-                mouseDX = (float)event.motion.xrel;
-                mouseDY = (float)event.motion.yrel;
+            if (event.type == SDL_MOUSEMOTION && rightMouseHeld)
+            {
+                inputSystem.OnMouseMove(
+                    (float)event.motion.xrel,
+                    (float)event.motion.yrel
+                );
+            }
+
+            if (inputSystem.Pressed("Jump"))
+            {
+                EditorConsole::Log("[Input] Jump pressed");
+            }
+
+            if (inputSystem.Held("MoveForward"))
+            {
+                EditorConsole::Log("[Input] Holding MoveForward");
             }
         }
+
+        
 
         auto now = std::chrono::high_resolution_clock::now();
         float dt = std::chrono::duration<float>(now - last).count();
         last = now;
 
-        bool forward = keystate[SDL_SCANCODE_W];
-        bool backward = keystate[SDL_SCANCODE_S];
-        bool left = keystate[SDL_SCANCODE_A];
-        bool right = keystate[SDL_SCANCODE_D];
-        bool up = keystate[SDL_SCANCODE_E];
-        bool down = keystate[SDL_SCANCODE_Q];
 
         if (editor.GetEngineMode() == EngineMode::Play)
         {
             PhysicsSystem::Update(entities, components, dt);
+
+            PlayerControllerSystem::Update(
+                entities,
+                components,
+                inputSystem,
+                dt
+            );
 
             for (EntityID id = 0; id < entities.GetMaxEntities(); ++id)
             {
@@ -264,7 +320,14 @@ int main() {
         SDL_GetWindowSize(window, &windowW, &windowH);
         camera.SetAspect((float)windowW, (float)windowH);
 
-        
+        ImGuiIO& io = ImGui::GetIO();
+
+        bool allowGameplayInput =
+            editor.GetEngineMode() == EngineMode::Play &&
+            !io.WantCaptureKeyboard &&
+            !io.WantCaptureMouse;
+
+        inputSystem.SetGameplayEnabled(allowGameplayInput);
 
         if (appState == AppState::Startup)
         {

@@ -6,6 +6,10 @@
 #include "../EditorConsole.h"
 #include <iostream>
 #include <optional>
+#include "../InputSystem.h"
+
+
+
 
 extern "C"
 {
@@ -15,11 +19,14 @@ extern "C"
 #include "LuaEntity.h"
 
 
+
 }
 
 static ScriptSystem* s_Instance = nullptr;
+static ScriptSystem* g_ScriptSystem = nullptr;
 
 static int Lua_Translate(lua_State* L);
+
 
 static int Lua_Print(lua_State* L)
 {
@@ -68,6 +75,70 @@ static std::optional<ScriptError> ParseLuaError(
     return err;
 }
 
+static int Lua_InputPressed(lua_State* L)
+{
+    const char* action = luaL_checkstring(L, 1);
+
+    bool pressed =
+        g_ScriptSystem &&
+        g_ScriptSystem->m_InputSystem &&
+        g_ScriptSystem->m_InputSystem->Pressed(action);
+
+    lua_pushboolean(L, pressed);
+    return 1;
+}
+
+static int Lua_InputHeld(lua_State* L)
+{
+    const char* action = luaL_checkstring(L, 1);
+
+    bool held =
+        g_ScriptSystem &&
+        g_ScriptSystem->m_InputSystem &&
+        g_ScriptSystem->m_InputSystem->Held(action);
+
+    lua_pushboolean(L, held);
+    return 1;
+}
+
+static int Lua_InputReleased(lua_State* L)
+{
+    const char* action = luaL_checkstring(L, 1);
+
+    bool released =
+        g_ScriptSystem &&
+        g_ScriptSystem->m_InputSystem &&
+        g_ScriptSystem->m_InputSystem->Released(action);
+
+    lua_pushboolean(L, released);
+    return 1;
+}
+
+static int Lua_InputMouseDX(lua_State* L)
+{
+    float dx =
+        g_ScriptSystem &&
+        g_ScriptSystem->m_InputSystem
+        ? g_ScriptSystem->m_InputSystem->GetMouseDX()
+        : 0.0f;
+
+    lua_pushnumber(L, dx);
+    return 1;
+}
+
+static int Lua_InputMouseDY(lua_State* L)
+{
+    float dy =
+        g_ScriptSystem &&
+        g_ScriptSystem->m_InputSystem
+        ? g_ScriptSystem->m_InputSystem->GetMouseDY()
+        : 0.0f;
+
+    lua_pushnumber(L, dy);
+    return 1;
+}
+
+
 
 static int LuaTraceback(lua_State* L)
 {
@@ -88,17 +159,47 @@ ScriptSystem& ScriptSystem::Get()
 void ScriptSystem::Init(ComponentManager* cm)
 {
     s_Instance = this;
+	g_ScriptSystem = this;
     components = cm;
 
     m_L = luaL_newstate();
     luaL_openlibs(m_L);
 
+    // ---------------- Transform API ----------------
     lua_newtable(m_L);
     lua_pushcfunction(m_L, Lua_Translate);
     lua_setfield(m_L, -2, "Translate");
     lua_setglobal(m_L, "Transform");
+
     lua_pushcfunction(m_L, Lua_Print);
     lua_setglobal(m_L, "print");
+
+    // ---------------- Input API ----------------
+    lua_newtable(m_L);               
+
+    lua_pushcfunction(m_L, Lua_InputMouseDX);
+    lua_setfield(m_L, -2, "MouseDX");
+
+    lua_pushcfunction(m_L, Lua_InputMouseDY);
+    lua_setfield(m_L, -2, "MouseDY");
+
+    lua_pushcfunction(m_L, Lua_InputPressed);
+    lua_setfield(m_L, -2, "Pressed");
+
+    lua_pushcfunction(m_L, Lua_InputHeld);
+    lua_setfield(m_L, -2, "Held");
+
+    lua_pushcfunction(m_L, Lua_InputReleased);
+    lua_setfield(m_L, -2, "Released");
+
+    lua_setglobal(m_L, "Input");
+
+    lua_getglobal(m_L, "Input");
+    if (lua_isnil(m_L, -1))
+    {
+        EditorConsole::Error("[Lua] Input table missing!");
+    }
+    lua_pop(m_L, 1);
 }
 
 void ScriptSystem::Shutdown()
@@ -282,6 +383,11 @@ static int Lua_Translate(lua_State* L)
     t.position.z += z;
 
     return 0;
+}
+
+void ScriptSystem::SetInputSystem(InputSystem* input)
+{
+    m_InputSystem = input;
 }
 
 
