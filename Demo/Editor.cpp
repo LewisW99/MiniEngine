@@ -23,6 +23,24 @@
 #pragma comment(lib, "Comdlg32.lib")
 
 
+struct ColliderPreset
+{
+    const char* name;
+    Vec3 halfExtents;
+    bool isStatic;
+};
+
+static ColliderPreset g_ColliderPresets[] =
+{
+    { "Player", { 0.4f, 0.9f, 0.4f }, false },
+    { "Wall",   { 1.0f, 2.0f, 0.5f }, true  },
+    { "Floor",  { 50.0f, 0.5f, 50.0f }, true },
+    { "Crate",  { 0.5f, 0.5f, 0.5f }, false }
+};
+
+static constexpr int kColliderPresetCount =
+sizeof(g_ColliderPresets) / sizeof(ColliderPreset);
+
 static std::string GetLuaTemplateText(
     ScriptTemplate type,
     const std::string& scriptName)
@@ -829,6 +847,84 @@ void Editor::DrawDetails()
             compMgr->RemoveComponent<PhysicsComponent>(selectedEntity);
         }
     }
+
+    ImGui::Separator();
+
+    bool hasCollider =
+        compMgr->HasComponent<ColliderComponent>(selectedEntity);
+
+    if (ImGui::Checkbox("Enable Collision", &hasCollider))
+    {
+        if (hasCollider &&
+            !compMgr->HasComponent<ColliderComponent>(selectedEntity))
+        {
+            compMgr->AddComponent(
+                selectedEntity,
+                ColliderComponent{}
+            );
+        }
+        else if (!hasCollider &&
+            compMgr->HasComponent<ColliderComponent>(selectedEntity))
+        {
+            compMgr->RemoveComponent<ColliderComponent>(selectedEntity);
+        }
+    }
+
+    if (hasCollider &&
+        compMgr->HasComponent<ColliderComponent>(selectedEntity))
+    {
+        auto& collider =
+            compMgr->GetComponent<ColliderComponent>(selectedEntity);
+
+        ImGui::Indent();
+
+        // --------------------------------------------------------
+        // PRESET DROPDOWN
+        // --------------------------------------------------------
+        static int selectedPreset = 0;
+
+        if (ImGui::BeginCombo(
+            "Collider Preset",
+            g_ColliderPresets[selectedPreset].name))
+        {
+            for (int i = 0; i < kColliderPresetCount; ++i)
+            {
+                bool isSelected = (selectedPreset == i);
+                if (ImGui::Selectable(g_ColliderPresets[i].name, isSelected))
+                {
+                    selectedPreset = i;
+
+                    // APPLY PRESET IMMEDIATELY
+                    collider.halfExtents =
+                        g_ColliderPresets[i].halfExtents;
+
+                    collider.isStatic =
+                        g_ColliderPresets[i].isStatic;
+                }
+
+                if (isSelected)
+                    ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+
+        // --------------------------------------------------------
+        // MANUAL OVERRIDES
+        // --------------------------------------------------------
+        ImGui::DragFloat3(
+            "Half Extents",
+            &collider.halfExtents.x,
+            0.05f,
+            0.01f,
+            1000.0f
+        );
+
+        ImGui::Checkbox("Static", &collider.isStatic);
+
+        ImGui::Unindent();
+    }
+
+	ImGui::Separator();
 
     // ---------------- Script ----------------
     if (compMgr->HasComponent<ScriptComponent>(selectedEntity))

@@ -1,8 +1,9 @@
-#include "pch.h"
+﻿#include "pch.h"
 #include "PlayerControllerSystem.h"
 
 #include "../Components/PlayerControllerComponent.h"
 #include "../Components/CameraFollowComponent.h"
+#include "../Components/Physics/PhysicsComponent.h"
 #include "../TransformSystem.h"
 #include "../Rendering/CameraMode.h"
 
@@ -30,13 +31,26 @@ void PlayerControllerSystem::Update(
         if (!components.HasComponent<TransformComponent>(e))
             continue;
 
-        auto& pc = components.GetComponent<PlayerControllerComponent>(e);
-        auto& transform = components.GetComponent<TransformComponent>(e);
+        if (!components.HasComponent<PhysicsComponent>(e))
+            continue;
 
+        auto& pc =
+            components.GetComponent<PlayerControllerComponent>(e);
 
+        auto& transform =
+            components.GetComponent<TransformComponent>(e);
+
+        auto& physics =
+            components.GetComponent<PhysicsComponent>(e);
+
+        // ============================================================
+        // MOVEMENT INPUT → VELOCITY (X/Z ONLY)
+        // ============================================================
 
         float moveX = input.GetAxis("MoveX");
         float moveZ = input.GetAxis("MoveZ");
+
+        glm::vec3 desiredVelocity(0.0f);
 
         if (moveX != 0.0f || moveZ != 0.0f)
         {
@@ -54,19 +68,25 @@ void PlayerControllerSystem::Update(
                 camRight * moveX;
 
             if (glm::length(moveDir) > 0.0f)
-            {
                 moveDir = glm::normalize(moveDir);
 
-                glm::vec3 delta =
-                    moveDir * pc.moveSpeed * dt;
-
-                transform.position.x += delta.x;
-                transform.position.y += delta.y;
-                transform.position.z += delta.z;
-            }
+            desiredVelocity =
+                moveDir * pc.moveSpeed;
         }
 
+        // Apply to physics (X/Z only)
+        physics.velocity.x = desiredVelocity.x;
+        physics.velocity.z = desiredVelocity.z;
 
+        if (input.Pressed("Jump") && physics.grounded)
+        {
+            physics.velocity.y = physics.jumpImpulse;
+            physics.grounded = false;
+        }
+
+        // ============================================================
+        // CAMERA MODE SWITCH
+        // ============================================================
 
         if (pc.allowCameraSwitch && input.Pressed("ToggleCamera"))
         {
@@ -76,29 +96,24 @@ void PlayerControllerSystem::Update(
                 : CameraMode::ThirdPerson;
         }
 
+        // ============================================================
+        // MOUSE LOOK / ROTATION
+        // ============================================================
 
         float mouseDX = -input.GetMouseDX();
         float mouseDY = input.GetMouseDY();
 
         if (mouseDX != 0.0f || mouseDY != 0.0f)
         {
-            if (pc.cameraMode == CameraMode::ThirdPerson)
-            {
-                // TPS: rotate player only
-                transform.rotation.y += mouseDX * pc.lookSpeed;
-            }
-            else // FIRST PERSON
-            {
-                // Rotate player yaw
-                transform.rotation.y += mouseDX * pc.lookSpeed;
+            // Rotate player yaw
+            transform.rotation.y += mouseDX * pc.lookSpeed;
 
-                // Rotate camera pitch + yaw
+            if (pc.cameraMode == CameraMode::FirstPerson)
+            {
                 camera.yaw += mouseDX * camera.mouseSensitivity;
                 camera.pitch -= mouseDY * camera.mouseSensitivity;
-
                 camera.pitch = glm::clamp(camera.pitch, -89.0f, 89.0f);
 
-                // Recalculate camera forward vector
                 glm::vec3 dir;
                 dir.x = cos(glm::radians(camera.yaw)) * cos(glm::radians(camera.pitch));
                 dir.y = sin(glm::radians(camera.pitch));

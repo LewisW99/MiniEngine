@@ -47,6 +47,7 @@
 #include "../Engine/Systems/PlayerControllerSystem.h"
 #include "../Engine/Components/CameraFollowComponent.h"
 #include "../Engine/Systems/CameraControllerSystem.h"
+#include "../Engine/Components/ColliderComponent.h"
 
 // ------------------------------------------------------------
 // Helper
@@ -150,6 +151,7 @@ int main() {
     components.RegisterComponent<ScriptComponent>("ScriptComponent");
     components.RegisterComponent<PlayerControllerComponent>("PlayerControllerComponent");
     components.RegisterComponent<CameraFollowComponent>("CameraFollowComponent");
+    components.RegisterComponent<ColliderComponent>("ColliderComponent");
 
 	components.DumpRegisteredComponents();
 
@@ -184,19 +186,20 @@ int main() {
 
     TransformComponent t;
     components.AddComponent(player, t);
-
+	PhysicsComponent Phys;
     PlayerControllerComponent pc;
     pc.moveSpeed = 6.0f;   // tweak freely
     pc.lookSpeed = 0.15f;
     components.AddComponent(player, pc);
+    components.AddComponent(player, Phys);
 
     ScriptComponent sc;
     sc.ScriptPath = "Scripts/Test.lua";
     components.AddComponent(player, sc);
 
-    scriptSystem.LoadScript(
+    /*scriptSystem.LoadScript(
         components.GetComponent<ScriptComponent>(player)
-    );
+    );*/
 
     Entity cameraEntity = entities.CreateEntity();
 

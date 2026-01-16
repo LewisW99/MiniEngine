@@ -85,8 +85,20 @@
             }
         },
         {
+            "collider": {
+                "halfExtents": [
+                    0.5,
+                    0.5,
+                    0.5
+                ],
+                "isStatic": false
+            },
             "id": 4,
             "name": "Entity 4",
+            "physics": {
+                "enabled": true,
+                "mass": 1.0
+            },
             "transform": {
                 "position": [
                     1.0,
@@ -169,8 +181,20 @@
             }
         },
         {
+            "collider": {
+                "halfExtents": [
+                    0.4000000059604645,
+                    0.8999999761581421,
+                    0.4000000059604645
+                ],
+                "isStatic": false
+            },
             "id": 8,
             "name": "Entity 8",
+            "physics": {
+                "enabled": true,
+                "mass": 1.0
+            },
             "playerController": {
                 "lookSpeed": 0.15000000596046448,
                 "moveSpeed": 6.0
