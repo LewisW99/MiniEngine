@@ -101,9 +101,17 @@ float InputSystem::GetMouseDY() const
     return m_MouseDY;
 }
 
-
+const std::unordered_map<std::string, InputAction>& InputSystem::GetActions() const
+{
+	return m_Actions;
+}
 
 void InputSystem::SetGameplayEnabled(bool enabled)
 {
     s_GameplayEnabled = enabled;
+}
+
+bool InputSystem::IsGameplayEnabled() const
+{
+    return s_GameplayEnabled;
 }

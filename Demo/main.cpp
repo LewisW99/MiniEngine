@@ -199,7 +199,7 @@ int main() {
     SDL_Event event;
     auto last = std::chrono::high_resolution_clock::now();
 
-    Editor editor(&entities, &components, &renderer, &camera, &streamer, &scriptSystem);
+    Editor editor(&entities, &components, &renderer, &camera, &streamer, &scriptSystem, &inputSystem);
 
     int windowW = 1920;
     int windowH = 1080;
@@ -320,7 +320,14 @@ int main() {
         SDL_GetWindowSize(window, &windowW, &windowH);
         camera.SetAspect((float)windowW, (float)windowH);
 
-        
+        ImGuiIO& io = ImGui::GetIO();
+
+        bool allowGameplayInput =
+            editor.GetEngineMode() == EngineMode::Play &&
+            !io.WantCaptureKeyboard &&
+            !io.WantCaptureMouse;
+
+        inputSystem.SetGameplayEnabled(allowGameplayInput);
 
         if (appState == AppState::Startup)
         {

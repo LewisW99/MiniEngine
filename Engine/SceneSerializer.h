@@ -5,6 +5,7 @@
 #include "../Engine/ECS/ComponentManager.h"
 #include "../Engine/ECS/EntityMeta.h"
 #include "../Engine/Components/Physics/PhysicsComponent.h"
+#include "../Engine/Components/PlayerControllerComponent.h"
 #include "../Engine/Scripting/ScriptComponent.h"
 
 using json = nlohmann::json;
@@ -60,6 +61,15 @@ public:
                 const auto& s = comps.GetComponent<ScriptComponent>(e);
                 entry["script"] = {
                     { "path", s.ScriptPath }
+                };
+            }
+
+            if (comps.HasComponent<PlayerControllerComponent>(e))
+            {
+                const auto& pc = comps.GetComponent<PlayerControllerComponent>(e);
+                entry["playerController"] = {
+                    { "moveSpeed", pc.moveSpeed },
+                    { "lookSpeed", pc.lookSpeed }
                 };
             }
 
@@ -122,6 +132,15 @@ public:
                 s.ScriptPath = entry["script"].value("path", "");
 
                 comps.AddComponent(e, s);
+            }
+
+            if (entry.contains("playerController"))
+            {
+                PlayerControllerComponent pc;
+                pc.moveSpeed = entry["playerController"].value("moveSpeed", 5.0f);
+                pc.lookSpeed = entry["playerController"].value("lookSpeed", 0.1f);
+
+                comps.AddComponent(e, pc);
             }
         }
     }

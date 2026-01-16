@@ -27,12 +27,14 @@ public:
     bool Released(const std::string& action) const;
     void SetGameplayEnabled(bool enabled);
 
+	bool IsGameplayEnabled() const;
 	// Mouse movement
     void OnMouseMove(float dx, float dy);
 
     float GetMouseDX() const;
     float GetMouseDY() const;
 
+    const std::unordered_map<std::string, InputAction>& GetActions() const;
 private:
     std::unordered_map<std::string, InputAction> m_Actions;
     float m_MouseDX = 0.0f;

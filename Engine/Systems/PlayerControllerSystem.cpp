@@ -11,6 +11,9 @@ void PlayerControllerSystem::Update(
     float dt
 )
 {
+    if (!input.IsGameplayEnabled())
+        return;
+
     for (EntityID id = 0; id < entities.GetMaxEntities(); ++id)
     {
         Entity e{ id };
