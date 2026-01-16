@@ -18,6 +18,7 @@
 #include "../Engine/InputSystem.h"
 #include "Scripting/ScriptAPI.h"
 #include "../Engine/Components/PlayerControllerComponent.h"
+#include "../Engine/Components/CameraFollowComponent.h"
 
 #pragma comment(lib, "Comdlg32.lib")
 
@@ -755,71 +756,92 @@ void Editor::DrawHierarchy()
 //Details Area
 void Editor::DrawDetails()
 {
-    ImGuiIO& io = ImGui::GetIO();
-    
     ImGui::Begin("Details");
 
-    if (!entityMgr) {
+    // ---------------- Safety gates ----------------
+    if (!entityMgr)
+    {
         ImGui::TextDisabled("Error: entityMgr is null!");
         ImGui::End();
         return;
     }
 
-    if (selectedEntity && entityMgr->IsAlive(selectedEntity))
+    if (!entityMgr->IsAlive(selectedEntity))
     {
-        ImGui::Text("Entity ID: %u", selectedEntity.id);
-
-        try
-        {
-            auto& transform = compMgr->GetComponent<TransformComponent>(selectedEntity);
-            ImGui::SeparatorText("Transform");
-            ImGui::DragFloat3("Position", &transform.position.x, 0.1f);
-            ImGui::DragFloat3("Rotation", &transform.rotation.x, 0.1f);
-            ImGui::DragFloat3("Scale", &transform.scale.x, 0.1f, 0.01f, 10.0f);
-        }
-        catch (...) {
-            ImGui::TextDisabled("No TransformComponent found.");
-        }
+        ImGui::TextDisabled("No entity selected");
+        ImGui::End();
+        return;
     }
-    else
-        ImGui::Text("No entity selected.");
 
+    // From here on, selectedEntity is GUARANTEED valid
+    ImGui::Text("Entity ID: %u", selectedEntity.id);
+
+    // ---------------- Transform ----------------
+    if (compMgr->HasComponent<TransformComponent>(selectedEntity))
+    {
+        auto& transform =
+            compMgr->GetComponent<TransformComponent>(selectedEntity);
+
+        ImGui::SeparatorText("Transform");
+        ImGui::DragFloat3("Position", &transform.position.x, 0.1f);
+        ImGui::DragFloat3("Rotation", &transform.rotation.x, 0.1f);
+        ImGui::DragFloat3("Scale", &transform.scale.x, 0.1f, 0.01f, 10.0f);
+    }
+
+    // ---------------- Asset info ----------------
     if (selectedAsset)
     {
         ImGui::SeparatorText("Asset Info");
         ImGui::Text("Name: %s", selectedAsset->name.c_str());
         ImGui::Text("Path: %s", selectedAsset->path.c_str());
-       // ImGui::Text("Type: %s", AssetTypeToString(selectedAsset->type));
 
         if (selectedAsset->type == AssetType::Texture)
         {
-            ImGui::Text("Resolution: %d x %d", selectedAsset->width, selectedAsset->height);
-            ImGui::Text("Channels: %d", selectedAsset->channels);
+            ImGui::Text(
+                "Resolution: %d x %d",
+                selectedAsset->width,
+                selectedAsset->height
+            );
+            ImGui::Text(
+                "Channels: %d",
+                selectedAsset->channels
+            );
         }
     }
 
-    bool hasPhysics = compMgr->HasComponent<PhysicsComponent>(selectedEntity);
+    // ---------------- Physics ----------------
+    bool hasPhysics =
+        compMgr->HasComponent<PhysicsComponent>(selectedEntity);
 
     if (ImGui::Checkbox("Enable Physics", &hasPhysics))
     {
-        if (hasPhysics)
-            compMgr->AddComponent(selectedEntity, PhysicsComponent{});
-        else
+        if (hasPhysics &&
+            !compMgr->HasComponent<PhysicsComponent>(selectedEntity))
+        {
+            compMgr->AddComponent(
+                selectedEntity,
+                PhysicsComponent{}
+            );
+        }
+        else if (!hasPhysics &&
+            compMgr->HasComponent<PhysicsComponent>(selectedEntity))
+        {
             compMgr->RemoveComponent<PhysicsComponent>(selectedEntity);
+        }
     }
 
+    // ---------------- Script ----------------
     if (compMgr->HasComponent<ScriptComponent>(selectedEntity))
     {
-        auto& sc = compMgr->GetComponent<ScriptComponent>(selectedEntity);
+        auto& sc =
+            compMgr->GetComponent<ScriptComponent>(selectedEntity);
 
         ImGui::SeparatorText("Script");
 
         auto scripts = GetProjectLuaScripts();
-
-        // Insert New Script option at the top
         scripts.insert(scripts.begin(), "<New Script>");
 
-        int currentIndex = 0; // default to <New Script>
+        int currentIndex = 0;
         for (int i = 1; i < (int)scripts.size(); ++i)
         {
             if (scripts[i] == sc.ScriptPath)
@@ -838,7 +860,6 @@ void Editor::DrawDetails()
                 bool selected = (i == currentIndex);
                 if (ImGui::Selectable(scripts[i].c_str(), selected))
                 {
-                    // -------- New Script --------
                     if (scripts[i] == "<New Script>")
                     {
                         requestCreateScriptPopup = true;
@@ -847,11 +868,12 @@ void Editor::DrawDetails()
                     {
                         sc.ScriptPath = scripts[i];
 
-                        const auto& project = ProjectManager::GetActive();
+                        const auto& project =
+                            ProjectManager::GetActive();
+
                         OpenScriptFile(
                             (project.rootPath / sc.ScriptPath).string()
                         );
-
                         FocusScriptEditor();
                     }
                 }
@@ -862,12 +884,13 @@ void Editor::DrawDetails()
             ImGui::EndCombo();
         }
 
-        // Existing script actions
         if (!sc.ScriptPath.empty())
         {
             if (ImGui::Button("Open Script"))
             {
-                const auto& project = ProjectManager::GetActive();
+                const auto& project =
+                    ProjectManager::GetActive();
+
                 OpenScriptFile(
                     (project.rootPath / sc.ScriptPath).string()
                 );
@@ -882,7 +905,7 @@ void Editor::DrawDetails()
             }
         }
     }
-    else if (selectedEntity)
+    else
     {
         if (ImGui::Button("Add Script"))
         {
@@ -892,12 +915,17 @@ void Editor::DrawDetails()
         }
     }
 
+    // ---------------- Player Controller ----------------
     if (compMgr->HasComponent<PlayerControllerComponent>(selectedEntity))
     {
         auto& pc =
             compMgr->GetComponent<PlayerControllerComponent>(selectedEntity);
 
-        if (ImGui::CollapsingHeader("Player Controller", ImGuiTreeNodeFlags_DefaultOpen))
+        ImGui::Separator();
+
+        if (ImGui::CollapsingHeader(
+            "Player Controller",
+            ImGuiTreeNodeFlags_DefaultOpen))
         {
             ImGui::DragFloat(
                 "Move Speed",
@@ -917,8 +945,43 @@ void Editor::DrawDetails()
         }
     }
 
+    // ---------------- Camera Follow ----------------
+    if (compMgr->HasComponent<CameraFollowComponent>(selectedEntity))
+    {
+        auto& c =
+            compMgr->GetComponent<CameraFollowComponent>(selectedEntity);
+
+        ImGui::Separator();
+
+        if (ImGui::CollapsingHeader("Camera Follow"))
+        {
+            ImGui::DragFloat(
+                "Distance",
+                &c.distance,
+                0.1f,
+                0.0f,
+                20.0f
+            );
+            ImGui::DragFloat(
+                "Height",
+                &c.height,
+                0.1f,
+                -5.0f,
+                10.0f
+            );
+            ImGui::DragFloat(
+                "Smoothness",
+                &c.smoothness,
+                0.1f,
+                0.1f,
+                50.0f
+            );
+        }
+    }
+
     ImGui::End();
 }
+
 
 
 
@@ -1220,6 +1283,12 @@ void Editor::EnterPlayMode()
         return;
     }
 
+	inputSystem->SetGameplayEnabled(true);
+
+    const auto& project = ProjectManager::GetActive();
+
+    SceneSerializer::Save(project.scenePath.string(), *entityMgr, *compMgr, meta);
+
     // 1. Save editor scene to memory (or temp file)
     SceneSerializer::Save("__temp_play_scene.scene", *entityMgr, *compMgr, meta);
 
@@ -1268,14 +1337,17 @@ void Editor::ExitPlayMode()
     compMgr->Clear();
     meta.Clear();
 
+    const auto& project = ProjectManager::GetActive();
+
     // Reload editor scene
     SceneSerializer::Load(
-        activeScenePath.string(),
+        project.scenePath.string(),
         *entityMgr,
         *compMgr,
         meta
     );
 
+	inputSystem->SetGameplayEnabled(false);
     engineMode = EngineMode::Editor;
 }
 

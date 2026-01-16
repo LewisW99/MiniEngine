@@ -192,6 +192,12 @@
     <ClInclude Include="Systems\PlayerControllerSystem.h">
       <Filter>Systems</Filter>
     </ClInclude>
+    <ClInclude Include="Components\CameraFollowComponent.h">
+      <Filter>Core\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Systems\CameraControllerSystem.h">
+      <Filter>Systems</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Engine.cpp">
@@ -285,6 +291,9 @@
       <Filter>Input</Filter>
     </ClCompile>
     <ClCompile Include="Systems\PlayerControllerSystem.cpp">
+      <Filter>Systems</Filter>
+    </ClCompile>
+    <ClCompile Include="Systems\CameraControllerSystem.cpp">
       <Filter>Systems</Filter>
     </ClCompile>
   </ItemGroup>

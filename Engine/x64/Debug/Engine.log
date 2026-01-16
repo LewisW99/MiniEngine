@@ -1,5 +1,2 @@
-﻿  InputSystem.cpp
-  ScriptSystem.cpp
-  PlayerControllerSystem.cpp
-  Generating Code...
+﻿  PlayerControllerSystem.cpp
   Engine.vcxproj -> C:\Users\Lewis\source\repos\MiniEngine\x64\Debug\Engine.lib

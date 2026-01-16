@@ -4,7 +4,6 @@
 void InputSystem::Init() {}
 void InputSystem::Shutdown() {}
 
-static bool s_GameplayEnabled = true;
 
 void InputSystem::BindAction(const std::string& action, int scancode)
 {
@@ -32,24 +31,26 @@ void InputSystem::EndFrame() {}
 
 void InputSystem::OnKeyDown(int scancode)
 {
-    if (!s_GameplayEnabled)
-    {
+    if (!m_GameplayEnabled)
         return;
-    }
 
     for (auto& [name, action] : m_Actions)
     {
-        if (action.key == scancode && !action.down)
+        if (action.key == scancode)
         {
-            action.down = true;
-            action.state = InputActionState::Pressed;
+            if (!action.down)
+            {
+                action.down = true;
+                action.state = InputActionState::Pressed;
+            }
         }
     }
 }
 
+
 void InputSystem::OnKeyUp(int scancode)
 {
-    if (!s_GameplayEnabled)
+    if (!m_GameplayEnabled)
     {
         return;
     }
@@ -108,10 +109,10 @@ const std::unordered_map<std::string, InputAction>& InputSystem::GetActions() co
 
 void InputSystem::SetGameplayEnabled(bool enabled)
 {
-    s_GameplayEnabled = enabled;
+    m_GameplayEnabled = enabled;
 }
 
 bool InputSystem::IsGameplayEnabled() const
 {
-    return s_GameplayEnabled;
+    return m_GameplayEnabled;
 }

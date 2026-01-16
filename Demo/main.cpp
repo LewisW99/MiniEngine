@@ -45,6 +45,8 @@
 #include "../Engine/EditorConsole.h"
 #include "../Engine/Components/PlayerControllerComponent.h"
 #include "../Engine/Systems/PlayerControllerSystem.h"
+#include "../Engine/Components/CameraFollowComponent.h"
+#include "../Engine/Systems/CameraControllerSystem.h"
 
 // ------------------------------------------------------------
 // Helper
@@ -143,10 +145,13 @@ int main() {
 
     EntityManager entities(64);
     ComponentManager components;
-    components.RegisterComponent<TransformComponent>();
-    components.RegisterComponent<PhysicsComponent>();
-	components.RegisterComponent<ScriptComponent>();
-    components.RegisterComponent<PlayerControllerComponent>();
+    components.RegisterComponent<TransformComponent>("TransformComponent");
+    components.RegisterComponent<PhysicsComponent>("PhysicsComponent");
+    components.RegisterComponent<ScriptComponent>("ScriptComponent");
+    components.RegisterComponent<PlayerControllerComponent>("PlayerControllerComponent");
+    components.RegisterComponent<CameraFollowComponent>("CameraFollowComponent");
+
+	components.DumpRegisteredComponents();
 
     InputSystem inputSystem;
     inputSystem.Init();
@@ -189,6 +194,17 @@ int main() {
         components.GetComponent<ScriptComponent>(player)
     );
 
+    Entity cameraEntity = entities.CreateEntity();
+
+    CameraFollowComponent follow;
+    follow.target = player;
+    follow.distance = 5.0f;   // TPS
+    follow.height = 2.0f;
+    follow.smoothness = 8.0f;
+    
+	components.AddComponent<TransformComponent>(cameraEntity, t);
+    components.AddComponent(cameraEntity, follow);
+
 	//RunLuaSmokeTest();
 
     AsyncLoader loader(jobSystem);
@@ -206,17 +222,19 @@ int main() {
 
     // ---------------- Main Loop ----------------
     while (running) {
+
+        /*ImGuiIO& io = ImGui::GetIO();
+
+        bool allowGameplayInput =
+            editor.GetEngineMode() == EngineMode::Play &&
+            !io.WantCaptureKeyboard &&
+            !io.WantCaptureMouse;
+
+        inputSystem.SetGameplayEnabled(allowGameplayInput);*/
         inputSystem.BeginFrame();
         // --- Input events ---
         float mouseDX = 0, mouseDY = 0;
 
-        //ImGuiIO& io = ImGui::GetIO();
-        //// Block gameplay input when ImGui is interacting
-        //inputSystem.SetGameplayEnabled(
-        //    editor.GetEngineMode() == EngineMode::Play &&
-        //    !io.WantCaptureKeyboard &&
-        //    !io.WantCaptureMouse
-        //);
 
         while (SDL_PollEvent(&event)) {
             ImGui_ImplSDL2_ProcessEvent(&event);
@@ -277,12 +295,24 @@ int main() {
 
         if (editor.GetEngineMode() == EngineMode::Play)
         {
-            PhysicsSystem::Update(entities, components, dt);
-
             PlayerControllerSystem::Update(
                 entities,
                 components,
                 inputSystem,
+                camera,
+                dt
+            );
+
+            PhysicsSystem::Update(
+                entities,
+                components,
+                dt
+            );
+
+            CameraControllerSystem::Update(
+                entities,
+                components,
+                camera,
                 dt
             );
 
@@ -320,14 +350,7 @@ int main() {
         SDL_GetWindowSize(window, &windowW, &windowH);
         camera.SetAspect((float)windowW, (float)windowH);
 
-        ImGuiIO& io = ImGui::GetIO();
-
-        bool allowGameplayInput =
-            editor.GetEngineMode() == EngineMode::Play &&
-            !io.WantCaptureKeyboard &&
-            !io.WantCaptureMouse;
-
-        inputSystem.SetGameplayEnabled(allowGameplayInput);
+        
 
         if (appState == AppState::Startup)
         {
@@ -405,6 +428,7 @@ int main() {
     SDL_Quit();
 
 	scriptSystem.Shutdown();
+    
     delete allocator;
     return 0;
 }

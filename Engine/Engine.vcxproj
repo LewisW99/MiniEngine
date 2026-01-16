@@ -160,6 +160,7 @@
     <ClInclude Include="AssetDatabase\AssetDatabase.h" />
     <ClInclude Include="AssetDatabase\AssetImporter.h" />
     <ClInclude Include="AsyncLoader.h" />
+    <ClInclude Include="Components\CameraFollowComponent.h" />
     <ClInclude Include="Components\Physics\PhysicsComponent.h" />
     <ClInclude Include="Components\PlayerControllerComponent.h" />
     <ClInclude Include="ConfigReader.h" />
@@ -197,6 +198,7 @@
     <ClInclude Include="Scripting\ScriptTemplates.h" />
     <ClInclude Include="Shader.h" />
     <ClInclude Include="Streaming\StreamingManager.h" />
+    <ClInclude Include="Systems\CameraControllerSystem.h" />
     <ClInclude Include="Systems\PlayerControllerSystem.h" />
     <ClInclude Include="ThreadPool.h" />
     <ClInclude Include="TransformSystem.h" />
@@ -286,6 +288,7 @@
     </ClCompile>
     <ClCompile Include="Scripting\ScriptSystem.cpp" />
     <ClCompile Include="Shader.cpp" />
+    <ClCompile Include="Systems\CameraControllerSystem.cpp" />
     <ClCompile Include="Systems\PlayerControllerSystem.cpp" />
     <ClCompile Include="ThreadPool.cpp" />
   </ItemGroup>
