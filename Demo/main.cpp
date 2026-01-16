@@ -163,6 +163,10 @@ int main() {
     inputSystem.BindAction("MoveLeft", SDL_SCANCODE_A);
     inputSystem.BindAction("MoveRight", SDL_SCANCODE_D);
     inputSystem.BindAction("Jump", SDL_SCANCODE_SPACE);
+    inputSystem.BindAction("ToggleCamera", SDL_SCANCODE_TAB);
+
+    inputSystem.BindAxis("MoveZ", "MoveForward", "MoveBackward");
+    inputSystem.BindAxis("MoveX", "MoveRight", "MoveLeft");
 
     ScriptSystem scriptSystem;
     scriptSystem.Init(&components);
@@ -235,6 +239,7 @@ int main() {
         // --- Input events ---
         float mouseDX = 0, mouseDY = 0;
 
+      
 
         while (SDL_PollEvent(&event)) {
             ImGui_ImplSDL2_ProcessEvent(&event);

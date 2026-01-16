@@ -198,6 +198,9 @@
     <ClInclude Include="Systems\CameraControllerSystem.h">
       <Filter>Systems</Filter>
     </ClInclude>
+    <ClInclude Include="Rendering\CameraMode.h">
+      <Filter>Core\Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Engine.cpp">

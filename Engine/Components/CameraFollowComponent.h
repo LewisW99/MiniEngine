@@ -1,5 +1,6 @@
 #pragma once
 #include "../ECS/Entity.h"
+#include "../Rendering/CameraMode.h"
 
 struct CameraFollowComponent
 {

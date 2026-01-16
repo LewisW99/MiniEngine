@@ -915,35 +915,32 @@ void Editor::DrawDetails()
         }
     }
 
-    // ---------------- Player Controller ----------------
     if (compMgr->HasComponent<PlayerControllerComponent>(selectedEntity))
     {
         auto& pc =
             compMgr->GetComponent<PlayerControllerComponent>(selectedEntity);
 
-        ImGui::Separator();
-
-        if (ImGui::CollapsingHeader(
-            "Player Controller",
-            ImGuiTreeNodeFlags_DefaultOpen))
+        if (ImGui::CollapsingHeader("Player Controller", ImGuiTreeNodeFlags_DefaultOpen))
         {
             ImGui::DragFloat(
                 "Move Speed",
                 &pc.moveSpeed,
-                0.1f,
-                0.0f,
-                50.0f
+                0.1f, 0.0f, 50.0f
             );
 
             ImGui::DragFloat(
                 "Look Speed",
                 &pc.lookSpeed,
-                0.01f,
-                0.0f,
-                5.0f
+                0.01f, 0.0f, 5.0f
+            );
+
+            ImGui::Checkbox(
+                "Allow Camera Switching",
+                &pc.allowCameraSwitch
             );
         }
     }
+
 
     // ---------------- Camera Follow ----------------
     if (compMgr->HasComponent<CameraFollowComponent>(selectedEntity))

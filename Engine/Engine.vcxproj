@@ -189,6 +189,7 @@
     <ClInclude Include="ProfilerOverlay.h" />
     <ClInclude Include="Renderer.h" />
     <ClInclude Include="Rendering\Camera.h" />
+    <ClInclude Include="Rendering\CameraMode.h" />
     <ClInclude Include="SceneCullingDemo.h" />
     <ClInclude Include="SceneNode.h" />
     <ClInclude Include="SceneSerializer.h" />

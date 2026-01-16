@@ -2,7 +2,9 @@
 #include "PlayerControllerSystem.h"
 
 #include "../Components/PlayerControllerComponent.h"
+#include "../Components/CameraFollowComponent.h"
 #include "../TransformSystem.h"
+#include "../Rendering/CameraMode.h"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
@@ -31,18 +33,13 @@ void PlayerControllerSystem::Update(
         auto& pc = components.GetComponent<PlayerControllerComponent>(e);
         auto& transform = components.GetComponent<TransformComponent>(e);
 
-        float moveX = 0.0f;
-        float moveZ = 0.0f;
 
-        if (input.Held("MoveForward"))  moveZ -= -1.0f;
-        if (input.Held("MoveBackward")) moveZ += 1.0f;
-        if (input.Held("MoveLeft"))     moveX -= 1.0f;
-        if (input.Held("MoveRight"))    moveX += 1.0f;
 
+        float moveX = input.GetAxis("MoveX");
+        float moveZ = input.GetAxis("MoveZ");
 
         if (moveX != 0.0f || moveZ != 0.0f)
         {
-            // Flatten camera forward to ground plane
             glm::vec3 camForward = camera.forward;
             camForward.y = 0.0f;
 
@@ -56,7 +53,6 @@ void PlayerControllerSystem::Update(
                 camForward * moveZ +
                 camRight * moveX;
 
-            // Axis-style: normalize diagonal movement
             if (glm::length(moveDir) > 0.0f)
             {
                 moveDir = glm::normalize(moveDir);
@@ -70,17 +66,45 @@ void PlayerControllerSystem::Update(
             }
         }
 
-        float mouseDX = -input.GetMouseDX();
 
-        if (mouseDX != 0.0f)
+
+        if (pc.allowCameraSwitch && input.Pressed("ToggleCamera"))
         {
-            transform.rotation.y += mouseDX * pc.lookSpeed;
+            pc.cameraMode =
+                (pc.cameraMode == CameraMode::ThirdPerson)
+                ? CameraMode::FirstPerson
+                : CameraMode::ThirdPerson;
+        }
 
-            // Optional: keep rotation tidy
-            if (transform.rotation.y > 360.0f)
-                transform.rotation.y -= 360.0f;
-            else if (transform.rotation.y < 0.0f)
-                transform.rotation.y += 360.0f;
+
+        float mouseDX = -input.GetMouseDX();
+        float mouseDY = input.GetMouseDY();
+
+        if (mouseDX != 0.0f || mouseDY != 0.0f)
+        {
+            if (pc.cameraMode == CameraMode::ThirdPerson)
+            {
+                // TPS: rotate player only
+                transform.rotation.y += mouseDX * pc.lookSpeed;
+            }
+            else // FIRST PERSON
+            {
+                // Rotate player yaw
+                transform.rotation.y += mouseDX * pc.lookSpeed;
+
+                // Rotate camera pitch + yaw
+                camera.yaw += mouseDX * camera.mouseSensitivity;
+                camera.pitch -= mouseDY * camera.mouseSensitivity;
+
+                camera.pitch = glm::clamp(camera.pitch, -89.0f, 89.0f);
+
+                // Recalculate camera forward vector
+                glm::vec3 dir;
+                dir.x = cos(glm::radians(camera.yaw)) * cos(glm::radians(camera.pitch));
+                dir.y = sin(glm::radians(camera.pitch));
+                dir.z = sin(glm::radians(camera.yaw)) * cos(glm::radians(camera.pitch));
+                camera.forward = glm::normalize(dir);
+            }
         }
     }
 }

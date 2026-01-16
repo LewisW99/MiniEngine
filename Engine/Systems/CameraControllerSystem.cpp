@@ -1,89 +1,105 @@
 #include "pch.h"
 #include "CameraControllerSystem.h"
+
 #include "../Components/CameraFollowComponent.h"
 #include "../TransformSystem.h"
-#include <glm/glm.hpp>
+#include "../Rendering/CameraMode.h"
 #include "../EditorConsole.h"
 
+#include <glm/glm.hpp>
+#include <cmath>
+#include "../Components/PlayerControllerComponent.h"
+
 static glm::vec3 Lerp(
-	const glm::vec3& a,
-	const glm::vec3& b,
-	float t)
+    const glm::vec3& a,
+    const glm::vec3& b,
+    float t)
 {
-	return a + (b - a) * t;
+    return a + (b - a) * t;
 }
 
 void CameraControllerSystem::Update(
-	EntityManager& entities,
-	ComponentManager& components,
-	Camera& camera,
-	float dt
+    EntityManager& entities,
+    ComponentManager& components,
+    Camera& camera,
+    float dt
 )
 {
     for (EntityID id = 0; id < entities.GetMaxEntities(); ++id)
     {
-        Entity e{ id };
+        Entity camEntity{ id };
 
-        if (!entities.IsAlive(e))
+        if (!entities.IsAlive(camEntity))
             continue;
 
-        if (!components.HasComponent<CameraFollowComponent>(e))
+        if (!components.HasComponent<CameraFollowComponent>(camEntity))
             continue;
 
-        const auto& follow =
-            components.GetComponent<CameraFollowComponent>(e);
+        auto& follow =
+            components.GetComponent<CameraFollowComponent>(camEntity);
 
-        if (!entities.IsAlive(follow.target))
+        Entity target = follow.target;
+
+        if (!entities.IsAlive(target))
             continue;
 
-        if (!components.HasComponent<TransformComponent>(follow.target))
+        if (!components.HasComponent<TransformComponent>(target))
             continue;
 
-        const auto& targetTransform =
-            components.GetComponent<TransformComponent>(follow.target);
+        if (!components.HasComponent<PlayerControllerComponent>(target))
+            continue;
 
-        
+        auto& targetTransform =
+            components.GetComponent<TransformComponent>(target);
 
-        // Target position (entity + height)
-        glm::vec3 targetPos(
-            targetTransform.position.x,
-            targetTransform.position.y + follow.height,
-            targetTransform.position.z
-        );
+        auto& pc =
+            components.GetComponent<PlayerControllerComponent>(target);
 
-        EditorConsole::Log(
-            "Camera follow target: " +
-            std::to_string(follow.target.id)
-        );
+        // ============================================================
+        // FIRST PERSON
+        // ============================================================
+        if (pc.cameraMode == CameraMode::FirstPerson)
+        {
+            camera.position.x = targetTransform.position.x;
+            camera.position.y = targetTransform.position.y + follow.height;
+            camera.position.z = targetTransform.position.z;
 
-        // Forward direction from target rotation (Y only for now)
-        float yaw = glm::radians(targetTransform.rotation.y);
-        glm::vec3 forward(
-            sin(yaw),
-            0.0f,
-            cos(yaw)
-        );
+            // forward already handled by PCS
+        }
+        // ============================================================
+        // THIRD PERSON
+        // ============================================================
+        else
+        {
+            glm::vec3 targetPos(
+                targetTransform.position.x,
+                targetTransform.position.y + follow.height,
+                targetTransform.position.z
+            );
 
-        glm::vec3 desiredPos =
-            targetPos - forward * follow.distance;
+            float yawRad =
+                glm::radians(targetTransform.rotation.y);
 
-        // Smooth follow
-        glm::vec3 currentPos(
-            camera.position.x,
-            camera.position.y,
-            camera.position.z
-        );
+            glm::vec3 forward(
+                std::sin(yawRad),
+                0.0f,
+                std::cos(yawRad)
+            );
 
-        float t = 1.0f - expf(-follow.smoothness * dt);
-        glm::vec3 newPos = Lerp(currentPos, desiredPos, t);
+            glm::vec3 desiredPos =
+                targetPos - forward * follow.distance;
 
-        camera.position.x = newPos.x;
-        camera.position.y = newPos.y;
-        camera.position.z = newPos.z;
+            float t =
+                1.0f - std::exp(-follow.smoothness * dt);
 
-        camera.LookAt(targetPos);
+            camera.position =
+                Lerp(camera.position, desiredPos, t);
 
-        // Only one active camera follow allowed
+            camera.LookAt(targetPos);
+        }
+
+        // only one active camera
         break;
     }
 }
+
