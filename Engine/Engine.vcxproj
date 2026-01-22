@@ -162,6 +162,7 @@
     <ClInclude Include="AsyncLoader.h" />
     <ClInclude Include="Components\CameraFollowComponent.h" />
     <ClInclude Include="Components\ColliderComponent.h" />
+    <ClInclude Include="Components\MaterialComponent.h" />
     <ClInclude Include="Components\Physics\PhysicsComponent.h" />
     <ClInclude Include="Components\PlayerControllerComponent.h" />
     <ClInclude Include="ConfigReader.h" />

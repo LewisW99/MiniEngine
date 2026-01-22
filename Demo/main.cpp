@@ -48,6 +48,7 @@
 #include "../Engine/Components/CameraFollowComponent.h"
 #include "../Engine/Systems/CameraControllerSystem.h"
 #include "../Engine/Components/ColliderComponent.h"
+#include "../Engine/Components/MaterialComponent.h"
 
 // ------------------------------------------------------------
 // Helper
@@ -152,6 +153,7 @@ int main() {
     components.RegisterComponent<PlayerControllerComponent>("PlayerControllerComponent");
     components.RegisterComponent<CameraFollowComponent>("CameraFollowComponent");
     components.RegisterComponent<ColliderComponent>("ColliderComponent");
+	components.RegisterComponent<MaterialComponent>("MaterialComponent");
 
 	components.DumpRegisteredComponents();
 
@@ -188,6 +190,8 @@ int main() {
     components.AddComponent(player, t);
 	PhysicsComponent Phys;
     PlayerControllerComponent pc;
+    
+
     pc.moveSpeed = 6.0f;   // tweak freely
     pc.lookSpeed = 0.15f;
     components.AddComponent(player, pc);
@@ -196,6 +200,12 @@ int main() {
     ScriptComponent sc;
     sc.ScriptPath = "Scripts/Test.lua";
     components.AddComponent(player, sc);
+
+    MaterialComponent mat;
+    mat.albedo = { 0.3f, 0.8f, 0.4f };
+    mat.specular = 0.6f;
+    mat.shininess = 48.0f;
+    components.AddComponent(player, mat);
 
     /*scriptSystem.LoadScript(
         components.GetComponent<ScriptComponent>(player)

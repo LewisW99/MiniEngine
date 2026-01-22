@@ -3,12 +3,51 @@
 #include <vector>
 #include <iostream>
 #include "Math/MathConversions.h"
+#include "Components/MaterialComponent.h"
 
-// Cube data
-static const float cubeVerts[] = {
-    -0.5f,-0.5f,-0.5f,  0.5f,-0.5f,-0.5f,  0.5f,0.5f,-0.5f, -0.5f,0.5f,-0.5f,
-    -0.5f,-0.5f, 0.5f,  0.5f,-0.5f, 0.5f,  0.5f,0.5f, 0.5f, -0.5f,0.5f, 0.5f
+struct Vertex {
+    float px, py, pz;
+    float nx, ny, nz;
 };
+
+static const Vertex cubeVerts[] = {
+    // +X
+    { 0.5f,-0.5f,-0.5f,  1,0,0 },
+    { 0.5f, 0.5f,-0.5f,  1,0,0 },
+    { 0.5f, 0.5f, 0.5f,  1,0,0 },
+    { 0.5f,-0.5f, 0.5f,  1,0,0 },
+
+    // -X
+    {-0.5f,-0.5f, 0.5f, -1,0,0 },
+    {-0.5f, 0.5f, 0.5f, -1,0,0 },
+    {-0.5f, 0.5f,-0.5f, -1,0,0 },
+    {-0.5f,-0.5f,-0.5f, -1,0,0 },
+
+    // +Y
+    {-0.5f, 0.5f,-0.5f,  0,1,0 },
+    {-0.5f, 0.5f, 0.5f,  0,1,0 },
+    { 0.5f, 0.5f, 0.5f,  0,1,0 },
+    { 0.5f, 0.5f,-0.5f,  0,1,0 },
+
+    // -Y
+    {-0.5f,-0.5f, 0.5f,  0,-1,0 },
+    {-0.5f,-0.5f,-0.5f,  0,-1,0 },
+    { 0.5f,-0.5f,-0.5f,  0,-1,0 },
+    { 0.5f,-0.5f, 0.5f,  0,-1,0 },
+
+    // +Z
+    {-0.5f,-0.5f, 0.5f,  0,0,1 },
+    { 0.5f,-0.5f, 0.5f,  0,0,1 },
+    { 0.5f, 0.5f, 0.5f,  0,0,1 },
+    {-0.5f, 0.5f, 0.5f,  0,0,1 },
+
+    // -Z
+    { 0.5f,-0.5f,-0.5f,  0,0,-1 },
+    {-0.5f,-0.5f,-0.5f,  0,0,-1 },
+    {-0.5f, 0.5f,-0.5f,  0,0,-1 },
+    { 0.5f, 0.5f,-0.5f,  0,0,-1 },
+};
+
 
 static const unsigned int cubeIdx[] = {
     0,1,2, 2,3,0,
@@ -64,24 +103,78 @@ void Renderer::Init()
     const char* vs = R"(
         #version 330 core
         layout (location = 0) in vec3 aPos;
-        uniform mat4 MVP;
-        void main() {
-            gl_Position = MVP * vec4(aPos, 1.0);
+        layout (location = 1) in vec3 aNormal;
+
+        uniform mat4 u_Model;
+        uniform mat4 u_ViewProj;
+
+        out vec3 vNormal;
+        out vec3 vWorldPos;
+
+        void main()
+        {
+            mat3 normalMatrix = transpose(inverse(mat3(u_Model)));
+            vNormal = normalMatrix * aNormal;
+
+            vec4 worldPos = u_Model * vec4(aPos, 1.0);
+            vWorldPos = worldPos.xyz;
+
+            gl_Position = u_ViewProj * worldPos;
         }
-    )";
+        )";
 
     const char* fs = R"(
         #version 330 core
+
+        in vec3 vNormal;
+        in vec3 vWorldPos;
+
+        uniform vec3 u_Albedo;
+        uniform float u_Specular;
+        uniform float u_Shininess;
+
+        uniform vec3 u_LightDir;
+        uniform vec3 u_LightColor;
+        uniform vec3 u_CameraPos;
+
         out vec4 FragColor;
-        uniform vec3 color;
-        void main() {
+
+        void main()
+        {
+            vec3 N = normalize(vNormal);
+            vec3 L = normalize(-u_LightDir);
+            vec3 V = normalize(u_CameraPos - vWorldPos);
+            vec3 H = normalize(L + V);
+
+            float diffuse = max(dot(N, L), 0.0);
+
+            float spec = pow(max(dot(N, H), 0.0), u_Shininess);
+            vec3 specular = u_Specular * spec * u_LightColor;
+
+            float ambient = 0.25;
+
+            vec3 color =
+            u_Albedo * (ambient + diffuse) +
+            specular;
+
+            // gamma correction
+            color = pow(color, vec3(1.0 / 2.2));
+
             FragColor = vec4(color, 1.0);
         }
-    )";
+        )";
 
     shader.Compile(vs, fs);
-    mvpLoc = glGetUniformLocation(shader.id, "MVP");
-    colorLoc = glGetUniformLocation(shader.id, "color");
+    modelLoc = glGetUniformLocation(shader.id, "u_Model");
+    viewProjLoc = glGetUniformLocation(shader.id, "u_ViewProj");
+
+    albedoLoc = glGetUniformLocation(shader.id, "u_Albedo");
+    specularLoc = glGetUniformLocation(shader.id, "u_Specular");
+    shininessLoc = glGetUniformLocation(shader.id, "u_Shininess");
+
+    lightDirLoc = glGetUniformLocation(shader.id, "u_LightDir");
+    lightColorLoc = glGetUniformLocation(shader.id, "u_LightColor");
+    cameraPosLoc = glGetUniformLocation(shader.id, "u_CameraPos");
 
     // -----------------------------
     // Buffers
@@ -97,7 +190,19 @@ void Renderer::Init()
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(cubeIdx), cubeIdx, GL_STATIC_DRAW);
 
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    glVertexAttribPointer(
+        0, 3, GL_FLOAT, GL_FALSE,
+        sizeof(Vertex),
+        (void*)0
+    );
+    glEnableVertexAttribArray(0);
+
+    glVertexAttribPointer(
+        1, 3, GL_FLOAT, GL_FALSE,
+        sizeof(Vertex),
+        (void*)(3 * sizeof(float))
+    );
+    glEnableVertexAttribArray(1);
     glEnableVertexAttribArray(0);
     glBindVertexArray(0);
 
@@ -136,18 +241,19 @@ void Renderer::EnsureFramebufferSize(int width, int height)
 }
 
 
-void Renderer::RenderToTexture(const EntityManager& entities,
+void Renderer::RenderToTexture(
+    const EntityManager& entities,
     const ComponentManager& comps,
     const Camera& cam,
     int width,
     int height,
     Entity selectedEntity)
 {
-
-  
     EnsureFramebufferSize(width, height);
+
     glBindFramebuffer(GL_FRAMEBUFFER, m_FBO);
     glViewport(0, 0, width, height);
+
     glEnable(GL_DEPTH_TEST);
     glClearColor(0.1f, 0.12f, 0.25f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -155,59 +261,98 @@ void Renderer::RenderToTexture(const EntityManager& entities,
     shader.Use();
     glBindVertexArray(vao);
 
+    // ------------------------------------------------------------
+    // Global lighting uniforms (once per frame)
+    // ------------------------------------------------------------
+    glm::vec3 lightDir = glm::normalize(glm::vec3(0.0f, -1.0f, 0.0f));
+    glm::vec3 lightColor = glm::vec3(1.0f);
+
+    glUniform3fv(lightDirLoc, 1, &lightDir[0]);
+    glUniform3fv(lightColorLoc, 1, &lightColor[0]);
+    glUniform3fv(cameraPosLoc, 1, &cam.position[0]);
+
+    // ------------------------------------------------------------
+    // Optional editor grid
+    // ------------------------------------------------------------
     if (editorMode && snapGridVisible)
     {
-        glUseProgram(0); // use fixed-function for simple grid lines
+        glUseProgram(0);          // fixed-function
         glDisable(GL_DEPTH_TEST);
-        DrawGrid(cam.position, snapStep); // grid size and step
+        DrawGrid(cam.position, snapStep);
         glEnable(GL_DEPTH_TEST);
+
         shader.Use();
         glBindVertexArray(vao);
     }
 
-    //  Loop through entities and draw their transforms
-    for (uint32_t id = 0; id < 10000; ++id)
+    // ------------------------------------------------------------
+    // Camera matrices (same for all entities)
+    // ------------------------------------------------------------
+    glm::mat4 view = glm::lookAt(
+        cam.position,
+        cam.position + cam.forward,
+        cam.up
+    );
+
+    glm::mat4 proj = glm::perspective(
+        glm::radians(cam.fov),
+        cam.aspect,
+        cam.nearPlane,
+        cam.farPlane
+    );
+
+    glm::mat4 viewProj = proj * view;
+    glUniformMatrix4fv(viewProjLoc, 1, GL_FALSE, &viewProj[0][0]);
+
+    // ------------------------------------------------------------
+    // Draw entities
+    // ------------------------------------------------------------
+    for (uint32_t id = 0; id < entities.GetMaxEntities(); ++id)
     {
         Entity e{ id };
-        if (!entities.IsAlive(e)) continue;
+        if (!entities.IsAlive(e))
+            continue;
 
-        // Only draw entities that actually have a TransformComponent
-        try {
-            auto& t = comps.GetComponent<TransformComponent>(e);
+        if (!comps.HasComponent<TransformComponent>(e))
+            continue;
 
-            glm::vec3 color = (e.id == selectedEntity.id)
-                ? glm::vec3(1.0f, 0.5f, 0.0f)  // orange highlight
-                : glm::vec3(0.4f, 0.8f, 0.6f);
+        const auto& t = comps.GetComponent<TransformComponent>(e);
 
-            // Build model matrix manually using TransformComponent fields
-            glm::mat4 model = glm::mat4(1.0f);
+        // --------------------------------------------------------
+        // Build model matrix
+        // --------------------------------------------------------
+        glm::mat4 model = glm::mat4(1.0f);
+        model = glm::translate(model, glm::vec3(t.position.x, t.position.y, t.position.z));
+        model = glm::rotate(model, glm::radians(t.rotation.x), glm::vec3(1, 0, 0));
+        model = glm::rotate(model, glm::radians(t.rotation.y), glm::vec3(0, 1, 0));
+        model = glm::rotate(model, glm::radians(t.rotation.z), glm::vec3(0, 0, 1));
+        model = glm::scale(model, glm::vec3(t.scale.x, t.scale.y, t.scale.z));
 
-            // Apply translation
-            model = glm::translate(model, glm::vec3(t.position.x, t.position.y, t.position.z));
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, &model[0][0]);
 
-            // Apply rotation (convert degrees to radians)
-            model = glm::rotate(model, glm::radians(t.rotation.x), glm::vec3(1, 0, 0));
-            model = glm::rotate(model, glm::radians(t.rotation.y), glm::vec3(0, 1, 0));
-            model = glm::rotate(model, glm::radians(t.rotation.z), glm::vec3(0, 0, 1));
+        // --------------------------------------------------------
+        // Material (per entity, with fallback)
+        // --------------------------------------------------------
+        glm::vec3 albedo = { 0.4f, 0.8f, 0.6f };
+        float specular = 0.3f;
+        float shininess = 32.0f;
 
-            // Apply scale
-            model = glm::scale(model, glm::vec3(t.scale.x, t.scale.y, t.scale.z));
-
-            // View + Projection as before
-            glm::mat4 view = glm::lookAt(cam.position, cam.position + cam.forward, cam.up);
-            glm::mat4 proj = glm::perspective(glm::radians(cam.fov), cam.aspect, cam.nearPlane, cam.farPlane);
-
-            // Combine them
-            glm::mat4 mvp = proj * view * model;
-            glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, &mvp[0][0]);
-
-           // glm::vec3 color = glm::vec3(0.4f, 0.8f, 0.6f); // simple default color
-            glUniform3fv(colorLoc, 1, &color[0]);
-            glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
+        if (comps.HasComponent<MaterialComponent>(e))
+        {
+            const auto& mat = comps.GetComponent<MaterialComponent>(e);
+            albedo = mat.albedo;
+            specular = mat.specular;
+            shininess = mat.shininess;
         }
-        catch (...) {
-            // Entity doesn't have this component, skip
-        }
+
+        glUniform3fv(albedoLoc, 1, &albedo[0]);
+        glUniform1f(specularLoc, specular);
+        glUniform1f(shininessLoc, shininess);
+
+        // --------------------------------------------------------
+        // Draw cube
+        // --------------------------------------------------------
+        glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
     }
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);

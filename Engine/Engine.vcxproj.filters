@@ -204,6 +204,9 @@
     <ClInclude Include="Components\ColliderComponent.h">
       <Filter>Core\Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Components\MaterialComponent.h">
+      <Filter>Components</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Engine.cpp">

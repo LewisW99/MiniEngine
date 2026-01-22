@@ -30,7 +30,16 @@ public:
 private:
     Shader shader;
     GLuint vao = 0, vbo = 0, ebo = 0;
-    GLint mvpLoc = -1, colorLoc = -1;
+    GLint modelLoc = -1;
+    GLint viewProjLoc = -1;
+
+    GLint albedoLoc = -1;
+    GLint specularLoc = -1;
+    GLint shininessLoc = -1;
+
+    GLint lightDirLoc = -1;
+    GLint lightColorLoc = -1;
+    GLint cameraPosLoc = -1;
 
     //  Framebuffer resources
     GLuint m_FBO = 0;
