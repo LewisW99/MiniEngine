@@ -29,32 +29,35 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v143</PlatformToolset>
+    <PlatformToolset>v146</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v143</PlatformToolset>
+    <PlatformToolset>v146</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v143</PlatformToolset>
+    <PlatformToolset>v145</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v143</PlatformToolset>
+    <PlatformToolset>v146</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
   </ImportGroup>
+  <PropertyGroup>
+    <VcpkgEnabled>false</VcpkgEnabled>
+  </PropertyGroup>
   <ImportGroup Label="Shared">
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -93,13 +96,14 @@
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>C:\Users\Lewis\imgui-1.92.4\imgui-docking;C:\Users\Lewis\imgui-1.92.4\imgui-docking\backends</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\Lewis\imgui-1.92.4\imgui-docking;C:\Users\Lewis\imgui-1.92.4\imgui-docking\backends;C:\Users\Lewis\DevTools\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>$(CoreLibraryDependencies);%(AdditionalDependencies);SDL2.lib;SDL2main.lib;opengl32.lib;glew32.lib;assimp-vc143-mt.lib;zlib.lib;</AdditionalDependencies>
+      <AdditionalDependencies>%(AdditionalDependencies);SDL2.lib;SDL2main.lib;opengl32.lib;glew32.lib;assimp-vc143-mt.lib;zlib.lib;</AdditionalDependencies>
       <AdditionalLibraryDirectories>C:\Users\Lewis\DevTools\vcpkg\installed\x64-windows\lib;C:\Users\Lewis\DevTools\vcpkg\installed\x64-windows\lib\manual-link</AdditionalLibraryDirectories>
+      <IgnoreSpecificDefaultLibraries>imgui.lib;imguid.lib;%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
       <GenerateMapFile>false</GenerateMapFile>
       <MapFileName>
       </MapFileName>
@@ -114,13 +118,14 @@
       <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>C:\Users\Lewis\imgui-1.92.4\imgui-docking;C:\Users\Lewis\imgui-1.92.4\imgui-docking\backends</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\Lewis\imgui-1.92.4\imgui-docking;C:\Users\Lewis\imgui-1.92.4\imgui-docking\backends;C:\Users\Lewis\DevTools\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>$(CoreLibraryDependencies);%(AdditionalDependencies);SDL2.lib;SDL2main.lib;opengl32.lib;glew32.lib;assimp-vc143-mt.lib;zlib.lib;</AdditionalDependencies>
+      <AdditionalDependencies>%(AdditionalDependencies);SDL2.lib;SDL2main.lib;opengl32.lib;glew32.lib;assimp-vc143-mt.lib;zlib.lib;</AdditionalDependencies>
       <AdditionalLibraryDirectories>C:\Users\Lewis\DevTools\vcpkg\installed\x64-windows\lib;C:\Users\Lewis\DevTools\vcpkg\installed\x64-windows\lib\manual-link</AdditionalLibraryDirectories>
+      <IgnoreSpecificDefaultLibraries>imgui.lib;imguid.lib;%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
       <GenerateMapFile>false</GenerateMapFile>
       <MapFileName>
       </MapFileName>
@@ -133,13 +138,14 @@
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>C:\Users\Lewis\imgui-1.92.4\imgui-docking;C:\Users\Lewis\imgui-1.92.4\imgui-docking\backends</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\Lewis\imgui-1.92.4\imgui-docking;C:\Users\Lewis\imgui-1.92.4\imgui-docking\backends;C:\Users\Lewis\DevTools\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>$(CoreLibraryDependencies);%(AdditionalDependencies);SDL2.lib;SDL2main.lib;opengl32.lib;glew32.lib;assimp-vc143-mt.lib;zlib.lib;</AdditionalDependencies>
+      <AdditionalDependencies>%(AdditionalDependencies);SDL2.lib;SDL2main.lib;opengl32.lib;glew32.lib;assimp-vc143-mt.lib;zlib.lib;</AdditionalDependencies>
       <AdditionalLibraryDirectories>C:\Users\Lewis\DevTools\vcpkg\installed\x64-windows\lib;C:\Users\Lewis\DevTools\vcpkg\installed\x64-windows\lib\manual-link</AdditionalLibraryDirectories>
+      <IgnoreSpecificDefaultLibraries>imgui.lib;imguid.lib;%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
       <GenerateMapFile>false</GenerateMapFile>
       <MapFileName>
       </MapFileName>
@@ -154,13 +160,14 @@
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>C:\Users\Lewis\imgui-1.92.4\imgui-docking;C:\Users\Lewis\imgui-1.92.4\imgui-docking\backends</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\Lewis\imgui-1.92.4\imgui-docking;C:\Users\Lewis\imgui-1.92.4\imgui-docking\backends;C:\Users\Lewis\DevTools\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>$(CoreLibraryDependencies);%(AdditionalDependencies);SDL2.lib;SDL2main.lib;opengl32.lib;glew32.lib;assimp-vc143-mt.lib;zlib.lib;</AdditionalDependencies>
+      <AdditionalDependencies>%(AdditionalDependencies);SDL2.lib;SDL2main.lib;opengl32.lib;glew32.lib;assimp-vc143-mt.lib;zlib.lib;</AdditionalDependencies>
       <AdditionalLibraryDirectories>C:\Users\Lewis\DevTools\vcpkg\installed\x64-windows\lib;C:\Users\Lewis\DevTools\vcpkg\installed\x64-windows\lib\manual-link</AdditionalLibraryDirectories>
+      <IgnoreSpecificDefaultLibraries>imgui.lib;imguid.lib;%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
       <GenerateMapFile>false</GenerateMapFile>
       <MapFileName>
       </MapFileName>

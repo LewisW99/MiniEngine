@@ -1,6 +1,9 @@
 ﻿#include <iostream>
+#include <iostream>
 #include <chrono>
+#include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 
@@ -48,11 +51,12 @@
 #include "../Engine/Components/CameraFollowComponent.h"
 #include "../Engine/Systems/CameraControllerSystem.h"
 #include "../Engine/Components/ColliderComponent.h"
+#include "../Engine/Components/LightComponent.h"
 #include "../Engine/Components/MaterialComponent.h"
+#include "../Engine/Components/MeshComponent.h"
+#include "../Engine/AssetDatabase/AssetImporter.h"
 
-// ------------------------------------------------------------
-// Helper
-// ------------------------------------------------------------
+//Creating memoryAllocator
 Allocator* createAllocator(const std::unordered_map<std::string, std::string>& config) {
     std::string type = config.at("allocator");
     if (type == "Linear")  return new LinearAllocator(std::stoull(config.at("block_size")));
@@ -142,6 +146,7 @@ int main() {
     // ---------------- Engine Init ----------------
     auto config = loadConfig("../Tests/engine.cfg");
     Allocator* allocator = createAllocator(config);
+	std::cout << "[Main] Allocator created...\n" << "Allocator is :" << allocator;
     ProfilerOverlay profiler(allocator);
     JobSystem jobSystem(std::thread::hardware_concurrency() - 1);
 
@@ -153,7 +158,9 @@ int main() {
     components.RegisterComponent<PlayerControllerComponent>("PlayerControllerComponent");
     components.RegisterComponent<CameraFollowComponent>("CameraFollowComponent");
     components.RegisterComponent<ColliderComponent>("ColliderComponent");
-	components.RegisterComponent<MaterialComponent>("MaterialComponent");
+    components.RegisterComponent<MaterialComponent>("MaterialComponent");
+    components.RegisterComponent<MeshComponent>("MeshComponent");
+    components.RegisterComponent<LightComponent>("LightComponent");
 
 	components.DumpRegisteredComponents();
 
@@ -180,19 +187,23 @@ int main() {
     for (int i = 0; i < 8; ++i) {
         Entity e = entities.CreateEntity();
         TransformComponent t;
+        MeshComponent mesh;
         t.position = { float(i * 2 - 7), 0, float(i * 2 - 7) };
         components.AddComponent(e, t);
+        components.AddComponent(e, mesh);
     }
 
     Entity player = entities.CreateEntity();
 
     TransformComponent t;
+    MeshComponent playerMesh;
     components.AddComponent(player, t);
-	PhysicsComponent Phys;
+    components.AddComponent(player, playerMesh);
+    PhysicsComponent Phys;
     PlayerControllerComponent pc;
     
 
-    pc.moveSpeed = 6.0f;   // tweak freely
+    pc.moveSpeed = 6.0f;   
     pc.lookSpeed = 0.15f;
     components.AddComponent(player, pc);
     components.AddComponent(player, Phys);
@@ -207,6 +218,15 @@ int main() {
     mat.shininess = 48.0f;
     components.AddComponent(player, mat);
 
+    Entity lightEntity = entities.CreateEntity();
+    TransformComponent lightTransform;
+    LightComponent light;
+    light.direction = glm::normalize(glm::vec3(-0.4f, -1.0f, -0.2f));
+    light.color = glm::vec3(1.0f, 0.98f, 0.92f);
+    light.intensity = 1.25f;
+    components.AddComponent(lightEntity, lightTransform);
+    components.AddComponent(lightEntity, light);
+
     /*scriptSystem.LoadScript(
         components.GetComponent<ScriptComponent>(player)
     );*/
@@ -219,7 +239,7 @@ int main() {
     follow.height = 2.0f;
     follow.smoothness = 8.0f;
     
-	components.AddComponent<TransformComponent>(cameraEntity, t);
+    components.AddComponent<TransformComponent>(cameraEntity, t);
     components.AddComponent(cameraEntity, follow);
 
 	//RunLuaSmokeTest();
@@ -441,11 +461,13 @@ int main() {
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplSDL2_Shutdown();
     ImGui::DestroyContext();
+    renderer.Shutdown();
+    AssetImporter::Shutdown();
     SDL_GL_DeleteContext(gl_context);
     SDL_DestroyWindow(window);
     SDL_Quit();
 
-	scriptSystem.Shutdown();
+    scriptSystem.Shutdown();
     
     delete allocator;
     return 0;

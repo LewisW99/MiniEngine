@@ -29,26 +29,26 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v143</PlatformToolset>
+    <PlatformToolset>v146</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v143</PlatformToolset>
+    <PlatformToolset>v146</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v143</PlatformToolset>
+    <PlatformToolset>v145</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v143</PlatformToolset>
+    <PlatformToolset>v146</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
@@ -79,7 +79,7 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>C:\Users\Lewis\source\repos\MiniEngine\Engine\ThirdParty\lua\include;C:\Libraries\SDL2\include;C:\Users\Lewis\imgui-1.92.4\imgui-docking\backends;C:\Users\Lewis\imgui-1.92.4\imgui-docking</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\Lewis\source\repos\MiniEngine\Engine\ThirdParty\lua\include;C:\Libraries\SDL2\include;C:\Users\Lewis\imgui-1.92.4\imgui-docking\backends;C:\Users\Lewis\imgui-1.92.4\imgui-docking;C:\Users\Lewis\DevTools\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>
@@ -87,7 +87,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
     <Lib>
-      <AdditionalLibraryDirectories>C:\Libraries\SDL2\lib\x64</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>C:\Libraries\SDL2\lib\x64;C:\Users\Lewis\DevTools\vcpkg\installed\x64-windows\lib;C:\Users\Lewis\DevTools\vcpkg\installed\x64-windows\debug\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Lib>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -101,7 +101,7 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>C:\Users\Lewis\source\repos\MiniEngine\Engine\ThirdParty\lua\include;C:\Libraries\SDL2\include;C:\Users\Lewis\imgui-1.92.4\imgui-docking\backends;C:\Users\Lewis\imgui-1.92.4\imgui-docking</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\Lewis\source\repos\MiniEngine\Engine\ThirdParty\lua\include;C:\Libraries\SDL2\include;C:\Users\Lewis\imgui-1.92.4\imgui-docking\backends;C:\Users\Lewis\imgui-1.92.4\imgui-docking;C:\Users\Lewis\DevTools\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>
@@ -109,7 +109,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
     <Lib>
-      <AdditionalLibraryDirectories>C:\Libraries\SDL2\lib\x64</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>C:\Libraries\SDL2\lib\x64;C:\Users\Lewis\DevTools\vcpkg\installed\x64-windows\lib;C:\Users\Lewis\DevTools\vcpkg\installed\x64-windows\debug\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Lib>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -121,7 +121,7 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>C:\Users\Lewis\source\repos\MiniEngine\Engine\ThirdParty\lua\include;C:\Libraries\SDL2\include;C:\Users\Lewis\imgui-1.92.4\imgui-docking\backends;C:\Users\Lewis\imgui-1.92.4\imgui-docking</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\Lewis\source\repos\MiniEngine\Engine\ThirdParty\lua\include;C:\Libraries\SDL2\include;C:\Users\Lewis\imgui-1.92.4\imgui-docking\backends;C:\Users\Lewis\imgui-1.92.4\imgui-docking;C:\Users\Lewis\DevTools\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>
@@ -129,7 +129,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
     <Lib>
-      <AdditionalLibraryDirectories>C:\Libraries\SDL2\lib\x64</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>C:\Libraries\SDL2\lib\x64;C:\Users\Lewis\DevTools\vcpkg\installed\x64-windows\lib;C:\Users\Lewis\DevTools\vcpkg\installed\x64-windows\debug\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Lib>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -143,7 +143,7 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>C:\Users\Lewis\source\repos\MiniEngine\Engine\ThirdParty\lua\include;C:\Libraries\SDL2\include;C:\Users\Lewis\imgui-1.92.4\imgui-docking\backends;C:\Users\Lewis\imgui-1.92.4\imgui-docking</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\Lewis\source\repos\MiniEngine\Engine\ThirdParty\lua\include;C:\Libraries\SDL2\include;C:\Users\Lewis\imgui-1.92.4\imgui-docking\backends;C:\Users\Lewis\imgui-1.92.4\imgui-docking;C:\Users\Lewis\DevTools\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>
@@ -151,7 +151,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
     <Lib>
-      <AdditionalLibraryDirectories>C:\Libraries\SDL2\lib\x64</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>C:\Libraries\SDL2\lib\x64;C:\Users\Lewis\DevTools\vcpkg\installed\x64-windows\lib;C:\Users\Lewis\DevTools\vcpkg\installed\x64-windows\debug\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Lib>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -162,7 +162,9 @@
     <ClInclude Include="AsyncLoader.h" />
     <ClInclude Include="Components\CameraFollowComponent.h" />
     <ClInclude Include="Components\ColliderComponent.h" />
+    <ClInclude Include="Components\LightComponent.h" />
     <ClInclude Include="Components\MaterialComponent.h" />
+    <ClInclude Include="Components\MeshComponent.h" />
     <ClInclude Include="Components\Physics\PhysicsComponent.h" />
     <ClInclude Include="Components\PlayerControllerComponent.h" />
     <ClInclude Include="ConfigReader.h" />
@@ -192,6 +194,8 @@
     <ClInclude Include="Renderer.h" />
     <ClInclude Include="Rendering\Camera.h" />
     <ClInclude Include="Rendering\CameraMode.h" />
+    <ClInclude Include="Rendering\RenderTypes.h" />
+    <ClInclude Include="Rendering\ResourceManager.h" />
     <ClInclude Include="SceneCullingDemo.h" />
     <ClInclude Include="SceneNode.h" />
     <ClInclude Include="SceneSerializer.h" />
@@ -203,6 +207,7 @@
     <ClInclude Include="Streaming\StreamingManager.h" />
     <ClInclude Include="Systems\CameraControllerSystem.h" />
     <ClInclude Include="Systems\PlayerControllerSystem.h" />
+    <ClInclude Include="Systems\RenderSystem.h" />
     <ClInclude Include="ThreadPool.h" />
     <ClInclude Include="TransformSystem.h" />
   </ItemGroup>
@@ -275,6 +280,7 @@
     <ClCompile Include="PhysicsSystem.cpp" />
     <ClCompile Include="ProfilerOverlay.cpp" />
     <ClCompile Include="Renderer.cpp" />
+    <ClCompile Include="Rendering\ResourceManager.cpp" />
     <ClCompile Include="SceneCullingDemo.cpp" />
     <ClCompile Include="SceneNode.cpp" />
     <ClCompile Include="Scripting\LuaTest.cpp">
@@ -293,6 +299,7 @@
     <ClCompile Include="Shader.cpp" />
     <ClCompile Include="Systems\CameraControllerSystem.cpp" />
     <ClCompile Include="Systems\PlayerControllerSystem.cpp" />
+    <ClCompile Include="Systems\RenderSystem.cpp" />
     <ClCompile Include="ThreadPool.cpp" />
   </ItemGroup>
   <ItemGroup>

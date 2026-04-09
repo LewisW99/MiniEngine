@@ -65,13 +65,8 @@ void AssetDatabase::ClearPreviews()
 {
     for (auto& a : assets)
     {
-        if (a.previewLoaded && a.previewID != 0)
-        {
-            glDeleteTextures(1, &a.previewID);
-            std::cout << "[AssetDB] Freed preview for " << a.name << " (" << a.previewID << ")\n";
-            a.previewID = 0;
-            a.previewLoaded = false;
-        }
+        a.previewID = 0;
+        a.previewLoaded = false;
     }
 }
 

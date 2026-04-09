@@ -207,6 +207,12 @@
     <ClInclude Include="Components\MaterialComponent.h">
       <Filter>Components</Filter>
     </ClInclude>
+    <ClInclude Include="Components\LightComponent.h">
+      <Filter>Core\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Components\MeshComponent.h">
+      <Filter>Core\Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Engine.cpp">

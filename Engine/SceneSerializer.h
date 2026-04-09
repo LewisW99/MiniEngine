@@ -1,20 +1,22 @@
 #pragma once
+
 #include <fstream>
+#include <string>
 #include <nlohmann/json.hpp>
-#include "../Engine/ECS/EntityManager.h"
-#include "../Engine/ECS/ComponentManager.h"
-#include "../Engine/ECS/EntityMeta.h"
-#include "../Engine/Components/Physics/PhysicsComponent.h"
-#include "../Engine/Components/PlayerControllerComponent.h"
-#include "../Engine/Components/ColliderComponent.h"
-#include "../Engine/Components/CameraFollowComponent.h"
-#include "../Engine/Scripting/ScriptComponent.h"
+#include "Components/CameraFollowComponent.h"
+#include "Components/ColliderComponent.h"
+#include "Components/LightComponent.h"
+#include "Components/MaterialComponent.h"
+#include "Components/MeshComponent.h"
+#include "Components/Physics/PhysicsComponent.h"
+#include "Components/PlayerControllerComponent.h"
+#include "ECS/ComponentManager.h"
+#include "ECS/EntityManager.h"
+#include "ECS/EntityMeta.h"
+#include "Scripting/ScriptComponent.h"
 
 using json = nlohmann::json;
 
-// ------------------------------------------------------------
-// SceneSerializer - handles saving/loading ECS state
-// ------------------------------------------------------------
 class SceneSerializer
 {
 public:
@@ -26,83 +28,112 @@ public:
         json root;
         root["entities"] = json::array();
 
-        for (uint32_t id = 0; id < 10000; ++id)
+        for (uint32_t id = 0; id < entities.GetMaxEntities(); ++id)
         {
-            Entity e{ id };
-            if (!entities.IsAlive(e)) continue;
+            const Entity entity{ id };
+            if (!entities.IsAlive(entity))
+            {
+                continue;
+            }
 
             json entry;
-            entry["id"] = e.id;
-            entry["name"] = meta.names.count(e.id)
-                ? meta.names.at(e.id)
-                : "Entity " + std::to_string(e.id);
+            entry["id"] = entity.id;
+            entry["name"] = meta.names.count(entity.id)
+                ? meta.names.at(entity.id)
+                : "Entity " + std::to_string(entity.id);
 
-            // -------- Transform --------
-            if (comps.HasComponent<TransformComponent>(e))
+            if (comps.HasComponent<TransformComponent>(entity))
             {
-                const auto& t = comps.GetComponent<TransformComponent>(e);
+                const auto& transform = comps.GetComponent<TransformComponent>(entity);
                 entry["transform"] = {
-                    { "position", { t.position.x, t.position.y, t.position.z } },
-                    { "rotation", { t.rotation.x, t.rotation.y, t.rotation.z } },
-                    { "scale",    { t.scale.x,    t.scale.y,    t.scale.z } }
+                    { "position", { transform.position.x, transform.position.y, transform.position.z } },
+                    { "rotation", { transform.rotation.x, transform.rotation.y, transform.rotation.z } },
+                    { "scale", { transform.scale.x, transform.scale.y, transform.scale.z } }
                 };
             }
 
-            // -------- Physics --------
-            if (comps.HasComponent<PhysicsComponent>(e))
+            if (comps.HasComponent<MeshComponent>(entity))
             {
-                const auto& p = comps.GetComponent<PhysicsComponent>(e);
+                const auto& mesh = comps.GetComponent<MeshComponent>(entity);
+                entry["mesh"] = {
+                    { "path", mesh.meshPath }
+                };
+            }
+
+            if (comps.HasComponent<MaterialComponent>(entity))
+            {
+                const auto& material = comps.GetComponent<MaterialComponent>(entity);
+                entry["material"] = {
+                    { "albedo", { material.albedo.x, material.albedo.y, material.albedo.z } },
+                    { "specular", material.specular },
+                    { "shininess", material.shininess },
+                    { "albedoTexture", material.albedoTexture },
+                    { "useTexture", material.useTexture }
+                };
+            }
+
+            if (comps.HasComponent<LightComponent>(entity))
+            {
+                const auto& light = comps.GetComponent<LightComponent>(entity);
+                entry["light"] = {
+                    { "direction", { light.direction.x, light.direction.y, light.direction.z } },
+                    { "color", { light.color.x, light.color.y, light.color.z } },
+                    { "intensity", light.intensity },
+                    { "enabled", light.enabled }
+                };
+            }
+
+            if (comps.HasComponent<PhysicsComponent>(entity))
+            {
+                const auto& physics = comps.GetComponent<PhysicsComponent>(entity);
                 entry["physics"] = {
-                    { "enabled", p.enabled },
-                    { "mass",    p.mass }
+                    { "enabled", physics.enabled },
+                    { "mass", physics.mass }
                 };
             }
 
-            if (comps.HasComponent<ColliderComponent>(e))
+            if (comps.HasComponent<ColliderComponent>(entity))
             {
-                const auto& c = comps.GetComponent<ColliderComponent>(e);
+                const auto& collider = comps.GetComponent<ColliderComponent>(entity);
                 entry["collider"] = {
-                    { "halfExtents", { c.halfExtents.x, c.halfExtents.y, c.halfExtents.z } },
-                    { "isStatic", c.isStatic }
+                    { "halfExtents", { collider.halfExtents.x, collider.halfExtents.y, collider.halfExtents.z } },
+                    { "isStatic", collider.isStatic }
                 };
             }
 
-            if (comps.HasComponent<ScriptComponent>(e))
+            if (comps.HasComponent<ScriptComponent>(entity))
             {
-                const auto& s = comps.GetComponent<ScriptComponent>(e);
+                const auto& script = comps.GetComponent<ScriptComponent>(entity);
                 entry["script"] = {
-                    { "path", s.ScriptPath }
+                    { "path", script.ScriptPath }
                 };
             }
 
-            if (comps.HasComponent<PlayerControllerComponent>(e))
+            if (comps.HasComponent<PlayerControllerComponent>(entity))
             {
-                const auto& pc = comps.GetComponent<PlayerControllerComponent>(e);
+                const auto& controller = comps.GetComponent<PlayerControllerComponent>(entity);
                 entry["playerController"] = {
-                    { "moveSpeed", pc.moveSpeed },
-                    { "lookSpeed", pc.lookSpeed }
+                    { "moveSpeed", controller.moveSpeed },
+                    { "lookSpeed", controller.lookSpeed }
                 };
             }
 
-            // -------- Camera Follow --------
-            if (comps.HasComponent<CameraFollowComponent>(e))
+            if (comps.HasComponent<CameraFollowComponent>(entity))
             {
-                const auto& c = comps.GetComponent<CameraFollowComponent>(e);
+                const auto& follow = comps.GetComponent<CameraFollowComponent>(entity);
                 entry["cameraFollow"] = {
-                    { "target",  c.target.id },
-                    { "distance", c.distance },
-                    { "height", c.height },
-                    { "smoothness", c.smoothness }
+                    { "target", follow.target.id },
+                    { "distance", follow.distance },
+                    { "height", follow.height },
+                    { "smoothness", follow.smoothness }
                 };
             }
-
 
             root["entities"].push_back(entry);
         }
 
         std::ofstream file(path);
         file << root.dump(4);
-        file.close();
     }
 
     static void Load(const std::string& path,
@@ -111,93 +142,143 @@ public:
         EntityMeta& meta)
     {
         std::ifstream file(path);
-        if (!file.is_open()) return;
+        if (!file.is_open())
+        {
+            return;
+        }
 
         json root;
         file >> root;
-        file.close();
 
-        // Clear existing ECS
         entities.Clear();
         comps.Clear();
         meta.Clear();
 
-        for (auto& entry : root["entities"])
+        for (const auto& entry : root["entities"])
         {
-            Entity e = entities.CreateEntity();
-            meta.SetName(e, entry.value("name", "Entity " + std::to_string(e.id)));
+            const Entity entity = entities.CreateEntity();
+            meta.SetName(entity, entry.value("name", "Entity " + std::to_string(entity.id)));
 
-            // -------- Transform --------
-            if (entry.contains("transform"))
+            const bool hasTransform = entry.contains("transform");
+            if (hasTransform)
             {
-                TransformComponent t;
-                auto& tr = entry["transform"];
+                TransformComponent transform;
+                const auto& tr = entry["transform"];
 
-                t.position = { tr["position"][0], tr["position"][1], tr["position"][2] };
-                t.rotation = { tr["rotation"][0], tr["rotation"][1], tr["rotation"][2] };
-                t.scale = { tr["scale"][0],    tr["scale"][1],    tr["scale"][2] };
+                transform.position = { tr["position"][0], tr["position"][1], tr["position"][2] };
+                transform.rotation = { tr["rotation"][0], tr["rotation"][1], tr["rotation"][2] };
+                transform.scale = { tr["scale"][0], tr["scale"][1], tr["scale"][2] };
 
-                comps.AddComponent(e, t);
+                comps.AddComponent(entity, transform);
             }
 
-            // -------- Physics --------
+            if (entry.contains("mesh"))
+            {
+                MeshComponent mesh;
+                mesh.meshPath = entry["mesh"].value("path", std::string{ "builtin://cube" });
+                comps.AddComponent(entity, mesh);
+            }
+            else if (hasTransform)
+            {
+                comps.AddComponent(entity, MeshComponent{});
+            }
+
+            if (entry.contains("material"))
+            {
+                MaterialComponent material;
+                const auto& materialEntry = entry["material"];
+
+                if (materialEntry.contains("albedo") && materialEntry["albedo"].size() >= 3)
+                {
+                    material.albedo = {
+                        materialEntry["albedo"][0],
+                        materialEntry["albedo"][1],
+                        materialEntry["albedo"][2]
+                    };
+                }
+
+                material.specular = materialEntry.value("specular", material.specular);
+                material.shininess = materialEntry.value("shininess", material.shininess);
+                material.albedoTexture = materialEntry.value(
+                    "albedoTexture",
+                    materialEntry.value("albedoTexturePath", std::string{}));
+                material.useTexture = materialEntry.value("useTexture", false);
+                comps.AddComponent(entity, material);
+            }
+
+            if (entry.contains("light"))
+            {
+                LightComponent light;
+                const auto& lightEntry = entry["light"];
+
+                if (lightEntry.contains("direction") && lightEntry["direction"].size() >= 3)
+                {
+                    light.direction = {
+                        lightEntry["direction"][0],
+                        lightEntry["direction"][1],
+                        lightEntry["direction"][2]
+                    };
+                }
+
+                if (lightEntry.contains("color") && lightEntry["color"].size() >= 3)
+                {
+                    light.color = {
+                        lightEntry["color"][0],
+                        lightEntry["color"][1],
+                        lightEntry["color"][2]
+                    };
+                }
+
+                light.intensity = lightEntry.value("intensity", light.intensity);
+                light.enabled = lightEntry.value("enabled", true);
+                comps.AddComponent(entity, light);
+            }
+
             if (entry.contains("physics"))
             {
-                PhysicsComponent p;
-                p.enabled = entry["physics"].value("enabled", true);
-                p.mass = entry["physics"].value("mass", 1.0f);
-
-                comps.AddComponent(e, p);
+                PhysicsComponent physics;
+                physics.enabled = entry["physics"].value("enabled", true);
+                physics.mass = entry["physics"].value("mass", 1.0f);
+                comps.AddComponent(entity, physics);
             }
 
             if (entry.contains("collider"))
             {
-                ColliderComponent c;
-                auto& col = entry["collider"];
-
-                c.halfExtents = {
-                    col["halfExtents"][0],
-                    col["halfExtents"][1],
-                    col["halfExtents"][2]
+                ColliderComponent collider;
+                const auto& colliderEntry = entry["collider"];
+                collider.halfExtents = {
+                    colliderEntry["halfExtents"][0],
+                    colliderEntry["halfExtents"][1],
+                    colliderEntry["halfExtents"][2]
                 };
-
-                c.isStatic = col.value("isStatic", false);
-
-                comps.AddComponent(e, c);
+                collider.isStatic = colliderEntry.value("isStatic", false);
+                comps.AddComponent(entity, collider);
             }
 
             if (entry.contains("script"))
             {
-                ScriptComponent s;
-                s.ScriptPath = entry["script"].value("path", "");
-
-                comps.AddComponent(e, s);
+                ScriptComponent script;
+                script.ScriptPath = entry["script"].value("path", "");
+                comps.AddComponent(entity, script);
             }
 
             if (entry.contains("playerController"))
             {
-                PlayerControllerComponent pc;
-                pc.moveSpeed = entry["playerController"].value("moveSpeed", 5.0f);
-                pc.lookSpeed = entry["playerController"].value("lookSpeed", 0.1f);
-
-                comps.AddComponent(e, pc);
+                PlayerControllerComponent controller;
+                controller.moveSpeed = entry["playerController"].value("moveSpeed", 5.0f);
+                controller.lookSpeed = entry["playerController"].value("lookSpeed", 0.1f);
+                comps.AddComponent(entity, controller);
             }
 
-            // -------- Camera Follow --------
             if (entry.contains("cameraFollow"))
             {
-                CameraFollowComponent c;
-                uint32_t targetId =
-                    entry["cameraFollow"].value("target", uint32_t{ 0 });
-
-                c.target = Entity{ targetId };
-                c.distance = entry["cameraFollow"].value("distance", 5.0f);
-                c.height = entry["cameraFollow"].value("height", 2.0f);
-                c.smoothness = entry["cameraFollow"].value("smoothness", 10.0f);
-
-                comps.AddComponent(e, c);
+                CameraFollowComponent follow;
+                follow.target = Entity{ entry["cameraFollow"].value("target", uint32_t{ 0 }) };
+                follow.distance = entry["cameraFollow"].value("distance", 5.0f);
+                follow.height = entry["cameraFollow"].value("height", 2.0f);
+                follow.smoothness = entry["cameraFollow"].value("smoothness", 10.0f);
+                comps.AddComponent(entity, follow);
             }
-
         }
     }
 };

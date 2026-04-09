@@ -22,8 +22,11 @@ public:
         std::free(m_Start);
     }
 
+    // 4-byte alignment chosen as a minimal, safe default.
+    // In production, alignment should be configurable or 16 bytes.
+
     void* allocate(size_t size) override {
-        // Align to 4 bytes (optional)
+        // Align to 4 bytes in this instance
         uintptr_t currentAddr = reinterpret_cast<uintptr_t>(m_Current);
         uintptr_t alignedAddr = (currentAddr + 3) & ~static_cast<uintptr_t>(3);
         char* alignedPtr = reinterpret_cast<char*>(alignedAddr);

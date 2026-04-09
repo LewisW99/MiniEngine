@@ -1,24 +1,33 @@
 ﻿
 #include "Editor.h"
+#include <cfloat>
+#include <cctype>
 #include <string>
 #include <algorithm>
-#include "../Engine/ImGuizmo.h"
-#include <SDL2/SDL.h>
-#include "../Engine/SceneSerializer.h"
-#include "../Engine/AssetDatabase/AssetImporter.h"
 #include <filesystem>
-#include <windows.h>
-#include <imgui_internal.h>
+#ifdef _WIN32
+#define NOMINMAX
+#include <Windows.h>
+#endif
+#include <SDL2/SDL.h>
 #include <imgui.h>
+#include <imgui_internal.h>
+#include "../Engine/AssetDatabase/AssetImporter.h"
+#include "../Engine/Components/LightComponent.h"
+#include "../Engine/Components/MaterialComponent.h"
+#include "../Engine/Components/MeshComponent.h"
+#include "../Engine/ImGuizmo.h"
+#include "../Engine/Rendering/ResourceManager.h"
+#include "../Engine/SceneSerializer.h"
 #include "Editor/Managers/ProjectManager.h"
-#include "../Engine/Components/Physics/PhysicsComponent.h"
-#include "../Engine/Scripting/ScriptComponent.h"
 #include <sstream>
+#include "../Engine/Components/CameraFollowComponent.h"
+#include "../Engine/Components/Physics/PhysicsComponent.h"
+#include "../Engine/Components/PlayerControllerComponent.h"
 #include "../Engine/EditorConsole.h"
 #include "../Engine/InputSystem.h"
+#include "../Engine/Scripting/ScriptComponent.h"
 #include "Scripting/ScriptAPI.h"
-#include "../Engine/Components/PlayerControllerComponent.h"
-#include "../Engine/Components/CameraFollowComponent.h"
 
 #pragma comment(lib, "Comdlg32.lib")
 
@@ -40,6 +49,53 @@ static ColliderPreset g_ColliderPresets[] =
 
 static constexpr int kColliderPresetCount =
 sizeof(g_ColliderPresets) / sizeof(ColliderPreset);
+
+namespace
+{
+    template<typename T>
+    void RemoveComponentIfPresent(ComponentManager& components, const Entity entity)
+    {
+        if (components.HasComponent<T>(entity))
+        {
+            components.RemoveComponent<T>(entity);
+        }
+    }
+
+    void RemoveKnownComponents(ComponentManager& components, const Entity entity)
+    {
+        RemoveComponentIfPresent<TransformComponent>(components, entity);
+        RemoveComponentIfPresent<MeshComponent>(components, entity);
+        RemoveComponentIfPresent<MaterialComponent>(components, entity);
+        RemoveComponentIfPresent<LightComponent>(components, entity);
+        RemoveComponentIfPresent<PhysicsComponent>(components, entity);
+        RemoveComponentIfPresent<ColliderComponent>(components, entity);
+        RemoveComponentIfPresent<ScriptComponent>(components, entity);
+        RemoveComponentIfPresent<PlayerControllerComponent>(components, entity);
+        RemoveComponentIfPresent<CameraFollowComponent>(components, entity);
+    }
+
+    template<typename T>
+    void CloneComponentIfPresent(ComponentManager& components, const Entity source, const Entity dest)
+    {
+        if (components.HasComponent<T>(source))
+        {
+            components.AddComponent(dest, components.GetComponent<T>(source));
+        }
+    }
+
+    void CloneKnownComponents(ComponentManager& components, const Entity source, const Entity dest)
+    {
+        CloneComponentIfPresent<TransformComponent>(components, source, dest);
+        CloneComponentIfPresent<MeshComponent>(components, source, dest);
+        CloneComponentIfPresent<MaterialComponent>(components, source, dest);
+        CloneComponentIfPresent<LightComponent>(components, source, dest);
+        CloneComponentIfPresent<PhysicsComponent>(components, source, dest);
+        CloneComponentIfPresent<ColliderComponent>(components, source, dest);
+        CloneComponentIfPresent<ScriptComponent>(components, source, dest);
+        CloneComponentIfPresent<PlayerControllerComponent>(components, source, dest);
+        CloneComponentIfPresent<CameraFollowComponent>(components, source, dest);
+    }
+}
 
 static std::string GetLuaTemplateText(
     ScriptTemplate type,
@@ -313,17 +369,9 @@ void Editor::Draw()
         {
             if (ImGui::MenuItem("New Scene"))
             {
-                // Clear everything
-                for (uint32_t id = 0; id < 10000; ++id)
-                {
-                    Entity e{ id };
-                    if (entityMgr->IsAlive(e))
-                    {
-                        compMgr->RemoveComponent<TransformComponent>(e);
-                        entityMgr->DestroyEntity(e);
-                        meta.Remove(e);
-                    }
-                }
+                entityMgr->Clear();
+                compMgr->Clear();
+                meta.Clear();
                 selectedEntity = {};
             }
 
@@ -350,7 +398,9 @@ void Editor::Draw()
             {
                 Entity e = entityMgr->CreateEntity();
                 TransformComponent t;
+                MeshComponent mesh;
                 compMgr->AddComponent(e, t);
+                compMgr->AddComponent(e, mesh);
                 meta.SetName(e, "Entity " + std::to_string(e.id));
                 selectedEntity = e;
                 renamingEntity = e;
@@ -361,14 +411,13 @@ void Editor::Draw()
                 if (ImGui::MenuItem("Duplicate Selected"))
                 {
                     Entity clone = entityMgr->CreateEntity();
-                    auto t = compMgr->GetComponent<TransformComponent>(selectedEntity);
-                    compMgr->AddComponent(clone, t);
+                    CloneKnownComponents(*compMgr, selectedEntity, clone);
                     meta.SetName(clone, meta.GetName(selectedEntity) + " (1)");
                 }
 
                 if (ImGui::MenuItem("Delete Selected"))
                 {
-                    compMgr->RemoveComponent<TransformComponent>(selectedEntity);
+                    RemoveKnownComponents(*compMgr, selectedEntity);
                     entityMgr->DestroyEntity(selectedEntity);
                     meta.Remove(selectedEntity);
                     selectedEntity = {};
@@ -470,6 +519,7 @@ void Editor::DrawSceneView()
 
     if (renderer && camera && entityMgr && compMgr)
     {
+        renderer->editorMode = true;
         renderer->RenderToTexture(*entityMgr, *compMgr, *camera, texW, texH, selectedEntity);
         ImTextureID tex = (ImTextureID)(intptr_t)renderer->GetSceneTextureID();
 
@@ -518,28 +568,31 @@ void Editor::DrawSceneView()
             float closestT = FLT_MAX;
             Entity closestEntity;
 
-            for (uint32_t id = 0; id < 10000; ++id)
+            for (uint32_t id = 0; id < entityMgr->GetMaxEntities(); ++id)
             {
                 Entity e{ id };
-                if (!entityMgr->IsAlive(e)) continue;
-
-                try {
-                    const auto& t = compMgr->GetComponent<TransformComponent>(e);
-                    glm::vec3 pos(t.position.x, t.position.y, t.position.z);
-                    glm::vec3 half(0.5f * t.scale.x, 0.5f * t.scale.y, 0.5f * t.scale.z);
-
-                    glm::vec3 aabbMin = pos - half;
-                    glm::vec3 aabbMax = pos + half;
-
-                    float tHit;
-                    if (RayIntersectsAABB(rayOrigin, rayDir, aabbMin, aabbMax, tHit)) {
-                        if (tHit < closestT && tHit > 0.0f) {
-                            closestT = tHit;
-                            closestEntity = e;
-                        }
-                    }
+                if (!entityMgr->IsAlive(e) ||
+                    !compMgr->HasComponent<TransformComponent>(e) ||
+                    !compMgr->HasComponent<MeshComponent>(e))
+                {
+                    continue;
                 }
-                catch (...) {}
+
+                const auto& t = compMgr->GetComponent<TransformComponent>(e);
+                const glm::vec3 pos(t.position.x, t.position.y, t.position.z);
+                const glm::vec3 half(0.5f * t.scale.x, 0.5f * t.scale.y, 0.5f * t.scale.z);
+
+                const glm::vec3 aabbMin = pos - half;
+                const glm::vec3 aabbMax = pos + half;
+
+                float tHit = 0.0f;
+                if (RayIntersectsAABB(rayOrigin, rayDir, aabbMin, aabbMax, tHit) &&
+                    tHit < closestT &&
+                    tHit > 0.0f)
+                {
+                    closestT = tHit;
+                    closestEntity = e;
+                }
             }
 
             //  Select or deselect
@@ -675,10 +728,12 @@ void Editor::DrawHierarchy()
         Entity e = entityMgr->CreateEntity();
 
         TransformComponent t;
+        MeshComponent mesh;
         t.position = { 0, 0, 0 };
         t.rotation = { 0, 0, 0 };
         t.scale = { 1, 1, 1 };
         compMgr->AddComponent(e, t);
+        compMgr->AddComponent(e, mesh);
 
         std::string name = "Entity " + std::to_string(e.id);
         meta.SetName(e, name);
@@ -689,7 +744,7 @@ void Editor::DrawHierarchy()
 
     ImGui::Separator();
 
-    for (uint32_t id = 0; id < 10000; ++id)
+    for (uint32_t id = 0; id < entityMgr->GetMaxEntities(); ++id)
     {
         Entity e{ id };
         if (!entityMgr->IsAlive(e)) continue;
@@ -749,15 +804,14 @@ void Editor::DrawHierarchy()
             if (ImGui::MenuItem("Duplicate"))
             {
                 Entity clone = entityMgr->CreateEntity();
-                auto t = compMgr->GetComponent<TransformComponent>(e);
-                compMgr->AddComponent(clone, t);
+                CloneKnownComponents(*compMgr, e, clone);
                 std::string newName = name + " (1)";
                 meta.SetName(clone, newName);
             }
 
             if (ImGui::MenuItem("Delete"))
             {
-                compMgr->RemoveComponent<TransformComponent>(e);
+                RemoveKnownComponents(*compMgr, e);
                 entityMgr->DestroyEntity(e);
                 meta.Remove(e);
                 if (selectedEntity.id == e.id) selectedEntity = {};
@@ -804,6 +858,120 @@ void Editor::DrawDetails()
         ImGui::DragFloat3("Position", &transform.position.x, 0.1f);
         ImGui::DragFloat3("Rotation", &transform.rotation.x, 0.1f);
         ImGui::DragFloat3("Scale", &transform.scale.x, 0.1f, 0.01f, 10.0f);
+    }
+
+    bool hasMesh =
+        compMgr->HasComponent<MeshComponent>(selectedEntity);
+
+    if (ImGui::Checkbox("Renderable Mesh", &hasMesh))
+    {
+        if (hasMesh)
+        {
+            compMgr->AddComponent(selectedEntity, MeshComponent{});
+        }
+        else
+        {
+            RemoveComponentIfPresent<MeshComponent>(*compMgr, selectedEntity);
+            RemoveComponentIfPresent<MaterialComponent>(*compMgr, selectedEntity);
+        }
+    }
+
+    if (hasMesh && compMgr->HasComponent<MeshComponent>(selectedEntity))
+    {
+        auto& mesh = compMgr->GetComponent<MeshComponent>(selectedEntity);
+        char meshPathBuffer[260] = {};
+        strncpy_s(meshPathBuffer, mesh.meshPath.c_str(), sizeof(meshPathBuffer) - 1);
+
+        ImGui::SeparatorText("Mesh");
+        ImGui::TextWrapped("Mesh Path: %s", mesh.meshPath.c_str());
+        if (ImGui::InputText("Mesh Path", meshPathBuffer, IM_ARRAYSIZE(meshPathBuffer)))
+        {
+            mesh.meshPath = meshPathBuffer;
+            if (mesh.meshPath.empty())
+            {
+                mesh.meshPath = "builtin://cube";
+            }
+        }
+        if (selectedAsset != nullptr && selectedAsset->type == AssetType::Model)
+        {
+            if (ImGui::Button("Use Selected Model"))
+            {
+                mesh.meshPath = selectedAsset->path;
+            }
+        }
+    }
+
+    bool hasMaterial =
+        compMgr->HasComponent<MaterialComponent>(selectedEntity);
+
+    if (hasMesh)
+    {
+        if (!hasMaterial)
+        {
+            if (ImGui::Button("Add Material"))
+            {
+                compMgr->AddComponent(selectedEntity, MaterialComponent{});
+                hasMaterial = true;
+            }
+        }
+        else
+        {
+            auto& material =
+                compMgr->GetComponent<MaterialComponent>(selectedEntity);
+
+            ImGui::SeparatorText("Material");
+            ImGui::ColorEdit3("Albedo", &material.albedo.x);
+            ImGui::SliderFloat("Specular", &material.specular, 0.0f, 1.0f);
+            ImGui::SliderFloat("Shininess", &material.shininess, 1.0f, 128.0f);
+            ImGui::Checkbox("Use Texture", &material.useTexture);
+            char texturePathBuffer[260] = {};
+            strncpy_s(texturePathBuffer, material.albedoTexture.c_str(), sizeof(texturePathBuffer) - 1);
+            if (ImGui::InputText("Albedo Texture", texturePathBuffer, IM_ARRAYSIZE(texturePathBuffer)))
+            {
+                material.albedoTexture = texturePathBuffer;
+            }
+            if (selectedAsset != nullptr && selectedAsset->type == AssetType::Texture)
+            {
+                if (ImGui::Button("Use Selected Texture"))
+                {
+                    material.albedoTexture = selectedAsset->path;
+                    material.useTexture = true;
+                }
+            }
+
+            if (ImGui::Button("Remove Material"))
+            {
+                compMgr->RemoveComponent<MaterialComponent>(selectedEntity);
+                hasMaterial = false;
+            }
+        }
+    }
+
+    bool hasLight =
+        compMgr->HasComponent<LightComponent>(selectedEntity);
+
+    if (ImGui::Checkbox("Directional Light", &hasLight))
+    {
+        if (hasLight)
+        {
+            compMgr->AddComponent(selectedEntity, LightComponent{});
+        }
+        else
+        {
+            RemoveComponentIfPresent<LightComponent>(*compMgr, selectedEntity);
+        }
+    }
+
+    if (hasLight && compMgr->HasComponent<LightComponent>(selectedEntity))
+    {
+        auto& light =
+            compMgr->GetComponent<LightComponent>(selectedEntity);
+
+        ImGui::SeparatorText("Light");
+        ImGui::DragFloat3("Direction", &light.direction.x, 0.05f, -1.0f, 1.0f);
+        ImGui::ColorEdit3("Color", &light.color.x);
+        ImGui::SliderFloat("Intensity", &light.intensity, 0.0f, 10.0f);
+        ImGui::Checkbox("Light Enabled", &light.enabled);
     }
 
     // ---------------- Asset info ----------------
@@ -1089,7 +1257,7 @@ void Editor::DrawAssetsPanel()
     ImGui::Separator();
 
     static bool showImportPopup = false;
-    if (ImGui::Button("➕ Import Asset", ImVec2(200, 30)))
+    if (ImGui::Button("+ Import Asset", ImVec2(200, 30)))
         ImGui::OpenPopup("Import Asset");
 
    
@@ -1222,14 +1390,14 @@ void Editor::DrawAssetsPanel()
             if (tex)
                 ImGui::Image((ImTextureID)(intptr_t)tex, ImVec2(64, 64));
             else
-                ImGui::Button("🖼", ImVec2(64, 64));
+                ImGui::Button("IMG", ImVec2(64, 64));
         }
         else if (a.type == AssetType::Model)
-            ImGui::Button("📦", ImVec2(64, 64));
+            ImGui::Button("MDL", ImVec2(64, 64));
         else if (a.type == AssetType::Audio)
-            ImGui::Button("🎵", ImVec2(64, 64));
+            ImGui::Button("AUD", ImVec2(64, 64));
         else
-            ImGui::Button("❓", ImVec2(64, 64));
+            ImGui::Button("?", ImVec2(64, 64));
 
         if (ImGui::IsItemClicked())
             selectedAsset = &a;
@@ -1248,30 +1416,19 @@ void Editor::DrawAssetsPanel()
 GLuint Editor::LoadTextureForPreview(AssetInfo& a)
 {
     if (a.previewLoaded && a.previewID != 0)
-        return a.previewID; // Already loaded
+    {
+        return a.previewID;
+    }
 
-    int w, h, c;
-    stbi_set_flip_vertically_on_load(false); // keep upright
-    unsigned char* data = stbi_load(a.path.c_str(), &w, &h, &c, 4);
-    if (!data)
+    const GLuint tex = ResourceManager::GetTexture(a.path);
+    if (tex == 0)
     {
         std::cerr << "[Thumbnail] Failed to load preview: " << a.path << "\n";
         return 0;
     }
 
-    GLuint tex = 0;
-    glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    stbi_image_free(data);
-
     a.previewID = tex;
     a.previewLoaded = true;
-
-    std::cout << "[Thumbnail] Loaded preview for " << a.name << " (" << w << "x" << h << ", TexID: " << tex << ")\n";
-
     return tex;
 }
 
