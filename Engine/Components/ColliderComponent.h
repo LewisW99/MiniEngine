@@ -1,5 +1,5 @@
 #pragma once
-#include "../Engine/Math/MathTypes.h"
+#include "../Math/MathTypes.h"
 
 struct ColliderComponent
 {

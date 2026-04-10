@@ -1,0 +1,12 @@
+{
+    "assets": [],
+    "config": [
+        "Config/game.cfg",
+        "Config/runtime.cfg"
+    ],
+    "runtimeId": "FreshProjectRuntime",
+    "scenes": [
+        "Scenes/Main.scene"
+    ],
+    "startupScene": "Scenes/Main.scene"
+}

@@ -1,6 +1,9 @@
 #include "pch.h"
 #include "InputSystem.h"
+#include <filesystem>
+#include <fstream>
 #include <glm/common.hpp>
+#include <nlohmann/json.hpp>
 
 void InputSystem::Init() {}
 void InputSystem::Shutdown() {}
@@ -11,6 +14,11 @@ void InputSystem::BindAction(const std::string& action, int scancode)
     InputAction& a = m_Actions[action];
     a.name = action;
     a.key = scancode;
+}
+
+void InputSystem::RebindAction(const std::string& action, const int scancode)
+{
+    BindAction(action, scancode);
 }
 
 void InputSystem::BeginFrame()
@@ -149,4 +157,82 @@ void InputSystem::SetGameplayEnabled(bool enabled)
 bool InputSystem::IsGameplayEnabled() const
 {
     return m_GameplayEnabled;
+}
+
+bool InputSystem::SaveBindings(const std::string& path) const
+{
+    nlohmann::json root;
+    root["actions"] = nlohmann::json::array();
+    root["axes"] = nlohmann::json::array();
+
+    for (const auto& [name, action] : m_Actions)
+    {
+        root["actions"].push_back({
+            { "name", name },
+            { "key", action.key }
+        });
+    }
+
+    for (const auto& [name, axis] : m_Axes)
+    {
+        nlohmann::json axisEntry = {
+            { "name", name },
+            { "bindings", nlohmann::json::array() }
+        };
+
+        for (const auto& binding : axis.bindings)
+        {
+            axisEntry["bindings"].push_back({
+                { "positive", binding.positive },
+                { "negative", binding.negative }
+            });
+        }
+
+        root["axes"].push_back(axisEntry);
+    }
+
+    std::filesystem::create_directories(std::filesystem::path(path).parent_path());
+    std::ofstream file(path);
+    if (!file.is_open())
+    {
+        return false;
+    }
+
+    file << root.dump(4);
+    return true;
+}
+
+bool InputSystem::LoadBindings(const std::string& path)
+{
+    std::ifstream file(path);
+    if (!file.is_open())
+    {
+        return false;
+    }
+
+    nlohmann::json root;
+    file >> root;
+
+    if (root.contains("actions"))
+    {
+        for (const auto& action : root["actions"])
+        {
+            BindAction(action.value("name", ""), action.value("key", 0));
+        }
+    }
+
+    if (root.contains("axes"))
+    {
+        m_Axes.clear();
+        for (const auto& axis : root["axes"])
+        {
+            const std::string name = axis.value("name", "");
+            for (const auto& binding : axis["bindings"])
+            {
+                BindAxis(name, binding.value("positive", ""), binding.value("negative", ""));
+            }
+        }
+    }
+
+    return true;
 }

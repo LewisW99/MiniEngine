@@ -11,6 +11,7 @@
 #include <imgui.h>
 #include "../Engine/Scripting/ScriptSystem.h"
 #include "../Engine/Scripting/ScriptTemplates.h"
+#include "EditorGizmoController.h"
 
 enum class AppState {
     Startup,
@@ -51,6 +52,7 @@ public:
     Editor(EntityManager* entities, ComponentManager* components, Renderer* renderer, Camera* camera, StreamingManager* streamer, ScriptSystem* scriptSystem, InputSystem* inputSystem);
 
     void Draw();
+    bool LoadActiveProjectScene();
 
     std::string statusText;
     float statusTimer = 0.0f;
@@ -84,9 +86,11 @@ private:
     void DrawDetails();
     void DrawAssetsPanel();
     void BeginDockSpace();
-	void DrawCreateScriptPopup();
+    void DrawCreateScriptPopup();
     void DrawConsoleWindow();
     void DrawScriptDocsPanel();
+    void DrawProjectSettingsPanel();
+    void SanitizeSelection();
 
     void FocusScriptEditor();
 
@@ -98,6 +102,17 @@ private:
 	void ExitPlayMode();
 
     void CreateLuaScript(const std::string& name, ScriptTemplate templateType);
+    void RefreshAssetDatabase();
+    Entity CreateEntityFromAsset(const AssetInfo& asset, const Vec3* spawnPosition = nullptr);
+    void ApplyAssetToSelectedEntity(const AssetInfo& asset);
+    bool AcceptAssetPayload(const char* payloadType, std::string& assetPath) const;
+    const AssetInfo* FindAssetByPath(const std::string& assetPath) const;
+    bool PackageProject();
+    bool SaveSelectedAsPrefab();
+    Entity CreateDirectionalLightEntity(const Vec3* spawnPosition = nullptr, bool selectEntity = true);
+    void EnsureDefaultDirectionalLight();
+    Vec3 GetSpawnPositionInFrontOfCamera(float distance = 5.0f) const;
+    bool TryGetSceneDropPosition(const ImVec2& imageMin, const ImVec2& imageMax, Vec3& outPosition) const;
 
     GLuint LoadTextureForPreview(AssetInfo& a);
 
@@ -120,5 +135,8 @@ private:
     int FindOrOpenScript(const std::string& path);
 
     bool showInputDebug = false;
+    bool assetsScanned = false;
+    EditorGizmoState gizmoState{};
+    std::filesystem::path defaultLightProjectFile;
 
 };

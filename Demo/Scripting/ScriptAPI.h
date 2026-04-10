@@ -7,6 +7,7 @@ struct ScriptApiFunction
     std::string name;
     std::string signature;
     std::string description;
+    std::string example;
 };
 
 struct ScriptApiCategory

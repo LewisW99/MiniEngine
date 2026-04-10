@@ -8,10 +8,16 @@ void AssetDatabase::Scan(const std::string& directory)
 {
     assets.clear();
 
-    std::error_code ec;
-    if (!std::filesystem::exists(directory, ec))
+    const std::filesystem::path scanRoot = directory;
+    if (projectRoot.empty())
     {
-        std::filesystem::create_directories(directory, ec);
+        projectRoot = scanRoot;
+    }
+
+    std::error_code ec;
+    if (!std::filesystem::exists(scanRoot, ec))
+    {
+        std::filesystem::create_directories(scanRoot, ec);
         if (ec)
         {
             std::cerr << "[AssetDB] Failed to create or access directory: " << directory << "\n";
@@ -19,7 +25,7 @@ void AssetDatabase::Scan(const std::string& directory)
         }
     }
 
-    for (auto& entry : std::filesystem::directory_iterator(directory, ec))
+    for (auto& entry : std::filesystem::recursive_directory_iterator(scanRoot, ec))
     {
         if (ec) {
             std::cerr << "[AssetDB] Error reading directory: " << ec.message() << "\n";
@@ -29,21 +35,21 @@ void AssetDatabase::Scan(const std::string& directory)
         if (!entry.is_regular_file()) continue;
 
         AssetInfo info;
-        info.path = entry.path().string();
+        std::error_code relativeEc;
+        const auto relativePath = std::filesystem::relative(entry.path(), projectRoot, relativeEc);
+        info.path = relativeEc ? entry.path().string() : relativePath.generic_string();
         info.name = entry.path().filename().string();
-        std::string ext = entry.path().extension().string();
+        info.type = DetectType(entry.path().extension());
 
-        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-
-        if (ext == ".obj" || ext == ".fbx" || ext == ".gltf" || ext == ".glb")
-            info.type = AssetType::Model;
-        else if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".tga" || ext == ".bmp")
+        if (info.type == AssetType::Unknown)
         {
-            info.type = AssetType::Texture;
+            continue;
+        }
 
-            // Read dimensions for textures
+        if (info.type == AssetType::Texture)
+        {
             int w, h, c;
-            unsigned char* data = stbi_load(info.path.c_str(), &w, &h, &c, 0);
+            unsigned char* data = stbi_load(entry.path().string().c_str(), &w, &h, &c, 0);
             if (data)
             {
                 info.width = w;
@@ -52,13 +58,19 @@ void AssetDatabase::Scan(const std::string& directory)
                 stbi_image_free(data);
             }
         }
-        else if (ext == ".wav" || ext == ".mp3" || ext == ".ogg")
-            info.type = AssetType::Audio;
-        else
-            info.type = AssetType::Unknown;
 
         assets.push_back(info);
     }
+
+    std::sort(assets.begin(), assets.end(), [](const AssetInfo& lhs, const AssetInfo& rhs)
+        {
+            if (lhs.type != rhs.type)
+            {
+                return lhs.type < rhs.type;
+            }
+
+            return lhs.name < rhs.name;
+        });
 }
 
 void AssetDatabase::ClearPreviews()

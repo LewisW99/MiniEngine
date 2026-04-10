@@ -4,16 +4,22 @@
 #include <string>
 #include <nlohmann/json.hpp>
 #include "Components/CameraFollowComponent.h"
+#include "Components/AnimationComponent.h"
+#include "Components/AudioSourceComponent.h"
 #include "Components/ColliderComponent.h"
 #include "Components/LightComponent.h"
 #include "Components/MaterialComponent.h"
 #include "Components/MeshComponent.h"
+#include "Components/NavAgentComponent.h"
+#include "Components/NavWaypointComponent.h"
 #include "Components/Physics/PhysicsComponent.h"
 #include "Components/PlayerControllerComponent.h"
+#include "Components/RuntimeUIComponent.h"
 #include "ECS/ComponentManager.h"
 #include "ECS/EntityManager.h"
 #include "ECS/EntityMeta.h"
 #include "Scripting/ScriptComponent.h"
+#include "TransformSystem.h"
 
 using json = nlohmann::json;
 
@@ -109,6 +115,89 @@ public:
                 };
             }
 
+            if (comps.HasComponent<AudioSourceComponent>(entity))
+            {
+                const auto& audio = comps.GetComponent<AudioSourceComponent>(entity);
+                entry["audioSource"] = {
+                    { "path", audio.path },
+                    { "loop", audio.loop },
+                    { "playOnStart", audio.playOnStart },
+                    { "volume", audio.volume },
+                    { "spatial", audio.spatial },
+                    { "enabled", audio.enabled }
+                };
+            }
+
+            if (comps.HasComponent<AnimationComponent>(entity))
+            {
+                const auto& animation = comps.GetComponent<AnimationComponent>(entity);
+                json clip;
+                clip["name"] = animation.clip.name;
+                clip["duration"] = animation.clip.duration;
+                clip["positionKeys"] = json::array();
+                clip["rotationKeys"] = json::array();
+                clip["scaleKeys"] = json::array();
+
+                for (const auto& key : animation.clip.positionKeys)
+                {
+                    clip["positionKeys"].push_back({ { "time", key.time }, { "value", { key.value.x, key.value.y, key.value.z } } });
+                }
+                for (const auto& key : animation.clip.rotationKeys)
+                {
+                    clip["rotationKeys"].push_back({ { "time", key.time }, { "value", { key.value.x, key.value.y, key.value.z } } });
+                }
+                for (const auto& key : animation.clip.scaleKeys)
+                {
+                    clip["scaleKeys"].push_back({ { "time", key.time }, { "value", { key.value.x, key.value.y, key.value.z } } });
+                }
+
+                entry["animation"] = {
+                    { "playing", animation.playing },
+                    { "loop", animation.loop },
+                    { "currentTime", animation.currentTime },
+                    { "clip", clip }
+                };
+            }
+
+            if (comps.HasComponent<NavWaypointComponent>(entity))
+            {
+                entry["navWaypoint"] = {
+                    { "links", comps.GetComponent<NavWaypointComponent>(entity).links }
+                };
+            }
+
+            if (comps.HasComponent<NavAgentComponent>(entity))
+            {
+                const auto& nav = comps.GetComponent<NavAgentComponent>(entity);
+                entry["navAgent"] = {
+                    { "mode", static_cast<int>(nav.mode) },
+                    { "waypoints", nav.waypointEntities },
+                    { "target", nav.targetEntity.id },
+                    { "speed", nav.speed },
+                    { "stoppingDistance", nav.stoppingDistance },
+                    { "currentWaypointIndex", nav.currentWaypointIndex },
+                    { "loop", nav.loop },
+                    { "active", nav.active }
+                };
+            }
+
+            if (comps.HasComponent<RuntimeUIComponent>(entity))
+            {
+                const auto& ui = comps.GetComponent<RuntimeUIComponent>(entity);
+                entry["runtimeUI"] = {
+                    { "type", static_cast<int>(ui.type) },
+                    { "anchor", static_cast<int>(ui.anchor) },
+                    { "text", ui.text },
+                    { "texturePath", ui.texturePath },
+                    { "buttonEvent", ui.buttonEvent },
+                    { "offsetX", ui.offsetX },
+                    { "offsetY", ui.offsetY },
+                    { "width", ui.width },
+                    { "height", ui.height },
+                    { "visible", ui.visible }
+                };
+            }
+
             if (comps.HasComponent<PlayerControllerComponent>(entity))
             {
                 const auto& controller = comps.GetComponent<PlayerControllerComponent>(entity);
@@ -177,10 +266,6 @@ public:
                 MeshComponent mesh;
                 mesh.meshPath = entry["mesh"].value("path", std::string{ "builtin://cube" });
                 comps.AddComponent(entity, mesh);
-            }
-            else if (hasTransform)
-            {
-                comps.AddComponent(entity, MeshComponent{});
             }
 
             if (entry.contains("material"))
@@ -260,6 +345,103 @@ public:
                 ScriptComponent script;
                 script.ScriptPath = entry["script"].value("path", "");
                 comps.AddComponent(entity, script);
+            }
+
+            if (entry.contains("audioSource"))
+            {
+                AudioSourceComponent audio;
+                const auto& audioEntry = entry["audioSource"];
+                audio.path = audioEntry.value("path", "");
+                audio.loop = audioEntry.value("loop", false);
+                audio.playOnStart = audioEntry.value("playOnStart", true);
+                audio.volume = audioEntry.value("volume", 1.0f);
+                audio.spatial = audioEntry.value("spatial", false);
+                audio.enabled = audioEntry.value("enabled", true);
+                comps.AddComponent(entity, audio);
+            }
+
+            if (entry.contains("animation"))
+            {
+                AnimationComponent animation;
+                const auto& animationEntry = entry["animation"];
+                animation.playing = animationEntry.value("playing", false);
+                animation.loop = animationEntry.value("loop", true);
+                animation.currentTime = animationEntry.value("currentTime", 0.0f);
+
+                if (animationEntry.contains("clip"))
+                {
+                    const auto& clipEntry = animationEntry["clip"];
+                    animation.clip.name = clipEntry.value("name", std::string{ "Default" });
+                    animation.clip.duration = clipEntry.value("duration", 0.0f);
+
+                    auto readKeys = [](const json& source, std::vector<TransformKeyframe>& destination)
+                    {
+                        for (const auto& key : source)
+                        {
+                            TransformKeyframe frame;
+                            frame.time = key.value("time", 0.0f);
+                            if (key.contains("value") && key["value"].size() >= 3)
+                            {
+                                frame.value = { key["value"][0], key["value"][1], key["value"][2] };
+                            }
+                            destination.push_back(frame);
+                        }
+                    };
+
+                    if (clipEntry.contains("positionKeys"))
+                    {
+                        readKeys(clipEntry["positionKeys"], animation.clip.positionKeys);
+                    }
+                    if (clipEntry.contains("rotationKeys"))
+                    {
+                        readKeys(clipEntry["rotationKeys"], animation.clip.rotationKeys);
+                    }
+                    if (clipEntry.contains("scaleKeys"))
+                    {
+                        readKeys(clipEntry["scaleKeys"], animation.clip.scaleKeys);
+                    }
+                }
+
+                comps.AddComponent(entity, animation);
+            }
+
+            if (entry.contains("navWaypoint"))
+            {
+                NavWaypointComponent waypoint;
+                waypoint.links = entry["navWaypoint"].value("links", std::vector<EntityID>{});
+                comps.AddComponent(entity, waypoint);
+            }
+
+            if (entry.contains("navAgent"))
+            {
+                NavAgentComponent nav;
+                const auto& navEntry = entry["navAgent"];
+                nav.mode = static_cast<NavAgentMode>(navEntry.value("mode", 0));
+                nav.waypointEntities = navEntry.value("waypoints", std::vector<EntityID>{});
+                nav.targetEntity = Entity{ navEntry.value("target", uint32_t{ 0 }) };
+                nav.speed = navEntry.value("speed", nav.speed);
+                nav.stoppingDistance = navEntry.value("stoppingDistance", nav.stoppingDistance);
+                nav.currentWaypointIndex = navEntry.value("currentWaypointIndex", nav.currentWaypointIndex);
+                nav.loop = navEntry.value("loop", nav.loop);
+                nav.active = navEntry.value("active", nav.active);
+                comps.AddComponent(entity, nav);
+            }
+
+            if (entry.contains("runtimeUI"))
+            {
+                RuntimeUIComponent ui;
+                const auto& uiEntry = entry["runtimeUI"];
+                ui.type = static_cast<RuntimeUIElementType>(uiEntry.value("type", 0));
+                ui.anchor = static_cast<RuntimeUIAnchor>(uiEntry.value("anchor", 0));
+                ui.text = uiEntry.value("text", ui.text);
+                ui.texturePath = uiEntry.value("texturePath", ui.texturePath);
+                ui.buttonEvent = uiEntry.value("buttonEvent", ui.buttonEvent);
+                ui.offsetX = uiEntry.value("offsetX", ui.offsetX);
+                ui.offsetY = uiEntry.value("offsetY", ui.offsetY);
+                ui.width = uiEntry.value("width", ui.width);
+                ui.height = uiEntry.value("height", ui.height);
+                ui.visible = uiEntry.value("visible", ui.visible);
+                comps.AddComponent(entity, ui);
             }
 
             if (entry.contains("playerController"))

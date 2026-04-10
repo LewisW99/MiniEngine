@@ -179,6 +179,7 @@
     <ClCompile Include="Editor\Projects\RecentProjects.cpp" />
     <ClCompile Include="Editor\StartupScreen.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="PrototypeBuilder.cpp" />
     <ClCompile Include="Scripting\ScriptAPI.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -193,6 +194,7 @@
     <ClInclude Include="Editor.h" />
     <ClInclude Include="Editor\Managers\ProjectManager.h" />
     <ClInclude Include="Editor\Projects\RecentProjects.h" />
+    <ClInclude Include="PrototypeBuilder.h" />
     <ClInclude Include="Scripting\ScriptAPI.h" />
     <ClInclude Include="StartupScreen.h" />
   </ItemGroup>

@@ -1,11 +1,24 @@
-﻿#include <iostream>
 #include <iostream>
 #include <chrono>
+#include <filesystem>
+#include <memory>
+#include <optional>
 #include <string>
 #include <thread>
 #include <unordered_map>
 #include <vector>
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <Windows.h>
+#ifdef near
+#undef near
+#endif
+#ifdef far
+#undef far
+#endif
+#endif
 
 #include "../Engine/Core/Memory/LinearAllocator.h"
 #include "../Engine/Core/Memory/StackAllocator.h"
@@ -20,6 +33,9 @@
 
 #include "../Engine/SceneCullingDemo.h"
 #include "../Engine/AsyncLoader.h"
+#include "../Engine/EventBus.h"
+#include "../Engine/SaveGameManager.h"
+#include "../Engine/SettingsManager.h"
 #include "../Engine/Streaming/StreamingManager.h"
 
 #include "../Engine/Renderer.h"
@@ -40,6 +56,7 @@
 #include "StartupScreen.h"
 #include "Editor/Managers/ProjectManager.h"
 #include "Editor/Projects/RecentProjects.h"
+#include "PrototypeBuilder.h"
 #include "../Engine/Components/Physics/PhysicsComponent.h"
 #include "../Engine/PhysicsSystem.h"
 #include "../Engine/Scripting/ScriptComponent.h"
@@ -47,43 +64,291 @@
 #include "../Engine/InputSystem.h"
 #include "../Engine/EditorConsole.h"
 #include "../Engine/Components/PlayerControllerComponent.h"
+#include "../Engine/Components/AnimationComponent.h"
+#include "../Engine/Components/AudioSourceComponent.h"
+#include "../Engine/Components/NavAgentComponent.h"
+#include "../Engine/Components/NavWaypointComponent.h"
+#include "../Engine/Components/RuntimeUIComponent.h"
 #include "../Engine/Systems/PlayerControllerSystem.h"
+#include "../Engine/Systems/AnimationSystem.h"
 #include "../Engine/Components/CameraFollowComponent.h"
 #include "../Engine/Systems/CameraControllerSystem.h"
+#include "../Engine/Systems/AudioSystem.h"
+#include "../Engine/Systems/NavigationSystem.h"
+#include "../Engine/Systems/UISystem.h"
 #include "../Engine/Components/ColliderComponent.h"
 #include "../Engine/Components/LightComponent.h"
 #include "../Engine/Components/MaterialComponent.h"
 #include "../Engine/Components/MeshComponent.h"
 #include "../Engine/AssetDatabase/AssetImporter.h"
+#include "../Engine/SceneSerializer.h"
 
 //Creating memoryAllocator
 Allocator* createAllocator(const std::unordered_map<std::string, std::string>& config) {
-    std::string type = config.at("allocator");
-    if (type == "Linear")  return new LinearAllocator(std::stoull(config.at("block_size")));
-    if (type == "Stack")   return new StackAllocator(std::stoull(config.at("block_size")));
-    if (type == "Pool")    return new PoolAllocator(std::stoull(config.at("block_size")),
-        std::stoull(config.at("num_blocks")));
-    return nullptr;
+    const auto typeIt = config.find("allocator");
+    const auto blockSizeIt = config.find("block_size");
+    const auto numBlocksIt = config.find("num_blocks");
+
+    const std::string type = typeIt != config.end() ? typeIt->second : "Linear";
+    const size_t blockSize = blockSizeIt != config.end() ? std::stoull(blockSizeIt->second) : 1024 * 1024;
+    const size_t numBlocks = numBlocksIt != config.end() ? std::stoull(numBlocksIt->second) : 256;
+
+    if (type == "Linear")  return new LinearAllocator(blockSize);
+    if (type == "Stack")   return new StackAllocator(blockSize);
+    if (type == "Pool")    return new PoolAllocator(blockSize, numBlocks);
+    return new LinearAllocator(blockSize);
+}
+
+namespace
+{
+    enum class LaunchMode
+    {
+        EditorShell,
+        GameRuntime,
+        PackagePrototype,
+        CreateProject
+    };
+
+    struct RuntimeOptions
+    {
+        LaunchMode launchMode = LaunchMode::EditorShell;
+        std::filesystem::path projectPath;
+        std::filesystem::path sceneOverride;
+        std::filesystem::path runtimeRoot;
+        std::filesystem::path assetDir;
+        std::filesystem::path configDir;
+        std::string gameId;
+    };
+
+    std::filesystem::path GetExecutablePath()
+    {
+#ifdef _WIN32
+        char pathBuffer[MAX_PATH] = {};
+        const DWORD length = GetModuleFileNameA(nullptr, pathBuffer, MAX_PATH);
+        return length > 0 ? std::filesystem::path(pathBuffer) : std::filesystem::current_path();
+#else
+        return std::filesystem::current_path();
+#endif
+    }
+
+    bool ApplyPackagedRuntimeConfig(const std::filesystem::path& executableDir, RuntimeOptions& options)
+    {
+        const std::filesystem::path runtimeConfigPath = executableDir / "Config" / "runtime.cfg";
+        if (!std::filesystem::exists(runtimeConfigPath))
+        {
+            return false;
+        }
+
+        const auto config = loadConfig(runtimeConfigPath.string());
+        options.runtimeRoot = executableDir;
+        options.assetDir = executableDir / "Assets";
+        options.configDir = executableDir / "Config";
+
+        if (const auto sceneIt = config.find("startup_scene"); sceneIt != config.end())
+        {
+            options.sceneOverride = executableDir / sceneIt->second;
+        }
+
+        if (const auto assetIt = config.find("asset_dir"); assetIt != config.end())
+        {
+            options.assetDir = executableDir / assetIt->second;
+        }
+
+        if (const auto configIt = config.find("config_dir"); configIt != config.end())
+        {
+            options.configDir = executableDir / configIt->second;
+        }
+
+        if (const auto gameIt = config.find("game_id"); gameIt != config.end())
+        {
+            options.gameId = gameIt->second;
+        }
+
+        options.launchMode = LaunchMode::GameRuntime;
+        return !options.sceneOverride.empty();
+    }
+
+    RuntimeOptions ParseRuntimeOptions(int argc, char** argv)
+    {
+        RuntimeOptions options;
+
+        for (int i = 1; i < argc; ++i)
+        {
+            const std::string arg = argv[i];
+            if (arg == "--game")
+            {
+                options.launchMode = LaunchMode::GameRuntime;
+                if (i + 1 < argc && argv[i + 1][0] != '-')
+                {
+                    options.projectPath = argv[++i];
+                }
+            }
+            else if (arg == "--project" && i + 1 < argc)
+            {
+                options.projectPath = argv[++i];
+            }
+            else if (arg == "--build-prototype" && i + 1 < argc)
+            {
+                options.launchMode = LaunchMode::PackagePrototype;
+                options.projectPath = argv[++i];
+            }
+            else if (arg == "--create-project" && i + 1 < argc)
+            {
+                options.launchMode = LaunchMode::CreateProject;
+                options.projectPath = argv[++i];
+            }
+            else if (arg == "--scene" && i + 1 < argc)
+            {
+                options.sceneOverride = argv[++i];
+            }
+            else if (!arg.empty() && arg[0] != '-')
+            {
+                const std::filesystem::path argumentPath = arg;
+                if (argumentPath.extension() == ".meproj")
+                {
+                    options.projectPath = argumentPath;
+                    options.launchMode = LaunchMode::EditorShell;
+                }
+            }
+        }
+
+        return options;
+    }
+
+    std::filesystem::path ResolveStartupScene(const RuntimeOptions& options)
+    {
+        const auto& project = ProjectManager::GetActive();
+
+        if (!options.sceneOverride.empty())
+        {
+            return options.sceneOverride.is_absolute()
+                ? options.sceneOverride
+                : (!options.runtimeRoot.empty() ? options.runtimeRoot : project.rootPath) / options.sceneOverride;
+        }
+
+        if (!project.configPath.empty() && std::filesystem::exists(project.configPath))
+        {
+            const auto config = loadConfig(project.configPath.string());
+            if (const auto it = config.find("startup_scene"); it != config.end())
+            {
+                const std::filesystem::path startup = it->second;
+                return startup.is_absolute() ? startup : project.rootPath / startup;
+            }
+        }
+
+        if (!project.startupScenePath.empty())
+        {
+            return project.startupScenePath.is_absolute()
+                ? project.startupScenePath
+                : project.rootPath / project.startupScenePath;
+        }
+
+        return project.scenePath;
+    }
+
+    std::optional<std::filesystem::path> FindEngineConfig(const RuntimeOptions& options)
+    {
+        std::vector<std::filesystem::path> candidates;
+
+        if (!options.projectPath.empty())
+        {
+            const auto projectRoot = options.projectPath.has_extension()
+                ? options.projectPath.parent_path()
+                : options.projectPath;
+            candidates.emplace_back(projectRoot / "engine.cfg");
+            candidates.emplace_back(projectRoot / "Config" / "engine.cfg");
+        }
+
+        if (!options.runtimeRoot.empty())
+        {
+            candidates.emplace_back(options.runtimeRoot / "engine.cfg");
+            if (!options.configDir.empty())
+            {
+                candidates.emplace_back(options.configDir / "engine.cfg");
+            }
+        }
+
+        if (ProjectManager::HasActiveProject())
+        {
+            const auto& project = ProjectManager::GetActive();
+            candidates.emplace_back(project.rootPath / "engine.cfg");
+            candidates.emplace_back(project.rootPath / "Config" / "engine.cfg");
+        }
+
+        candidates.emplace_back(std::filesystem::current_path() / "engine.cfg");
+        candidates.emplace_back(std::filesystem::current_path() / "Config" / "engine.cfg");
+        candidates.emplace_back(std::filesystem::current_path() / "../Tests/engine.cfg");
+
+        for (const auto& candidate : candidates)
+        {
+            if (!candidate.empty() && std::filesystem::exists(candidate))
+            {
+                return std::filesystem::weakly_canonical(candidate);
+            }
+        }
+
+        return std::nullopt;
+    }
 }
 
 
 // ------------------------------------------------------------
 // Main runtime
 // ------------------------------------------------------------
-int main() {
+int main(int argc, char** argv) {
+    RuntimeOptions runtimeOptions = ParseRuntimeOptions(argc, argv);
+    const std::filesystem::path executablePath = GetExecutablePath();
+    const std::filesystem::path executableDir = executablePath.parent_path();
+
+    if (runtimeOptions.launchMode == LaunchMode::EditorShell &&
+        executablePath.filename() == "Game.exe")
+    {
+        ApplyPackagedRuntimeConfig(executableDir, runtimeOptions);
+    }
+
+    const bool editorShellMode = runtimeOptions.launchMode == LaunchMode::EditorShell;
+    const bool gameRuntimeMode = runtimeOptions.launchMode == LaunchMode::GameRuntime;
+
+    if (runtimeOptions.launchMode == LaunchMode::CreateProject)
+    {
+        if (runtimeOptions.projectPath.empty())
+        {
+            std::cerr << "[Project] Missing project path for --create-project\n";
+            return -1;
+        }
+
+        ProjectManager::Create(runtimeOptions.projectPath);
+        std::cout << "[Project] Created project at " << runtimeOptions.projectPath << "\n";
+        return 0;
+    }
+
+    if (runtimeOptions.launchMode == LaunchMode::PackagePrototype)
+    {
+        std::string error;
+        if (!PrototypeBuilder::Build(runtimeOptions.projectPath, &error))
+        {
+            std::cerr << "[Packaging] " << error << "\n";
+            return -1;
+        }
+
+        std::cout << "[Packaging] Prototype build created for " << runtimeOptions.projectPath << "\n";
+        return 0;
+    }
+
     // ---------------- SDL / OpenGL Init ----------------
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         std::cerr << "Failed to init SDL: " << SDL_GetError() << std::endl;
         return -1;
     }
 
-
-
-
-    StartupScreen startupScreen;
+    std::unique_ptr<StartupScreen> startupScreen;
     std::string currentProjectPath;
-	AppState appState = AppState::Startup;
-	RecentProjects::Load();
+    AppState appState = gameRuntimeMode ? AppState::Editor : AppState::Startup;
+    if (editorShellMode)
+    {
+        startupScreen = std::make_unique<StartupScreen>();
+        RecentProjects::Load();
+    }
 
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
@@ -125,16 +390,30 @@ int main() {
     Camera camera;
     camera.SetAspect(1280, 720);
 
-    // ---------------- ImGui Init ----------------
+    auto applyProjectSettings = [&](const Project& project)
+        {
+            EngineSettings settings;
+            if (!SettingsManager::Load(project.rootPath / "Config" / "settings.json", settings))
+            {
+                return;
+            }
+
+            renderer.gamma = settings.runtime.gamma;
+            renderer.exposure = settings.runtime.exposure;
+            renderer.vignette = settings.runtime.vignette;
+        };
+
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
 
     ImGuiIO& io = ImGui::GetIO();
-    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-    io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable; // optional but recommended
+    if (editorShellMode)
+    {
+        io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+        io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+    }
 
     ImGui::StyleColorsDark();
-
     ImGui_ImplSDL2_InitForOpenGL(window, gl_context);
     ImGui_ImplOpenGL3_Init("#version 330");
 
@@ -144,7 +423,10 @@ int main() {
     bool rightMouseHeld = false;
 
     // ---------------- Engine Init ----------------
-    auto config = loadConfig("../Tests/engine.cfg");
+    const auto configPath = FindEngineConfig(runtimeOptions);
+    auto config = configPath.has_value()
+        ? loadConfig(configPath->string())
+        : std::unordered_map<std::string, std::string>{};
     Allocator* allocator = createAllocator(config);
 	std::cout << "[Main] Allocator created...\n" << "Allocator is :" << allocator;
     ProfilerOverlay profiler(allocator);
@@ -161,6 +443,11 @@ int main() {
     components.RegisterComponent<MaterialComponent>("MaterialComponent");
     components.RegisterComponent<MeshComponent>("MeshComponent");
     components.RegisterComponent<LightComponent>("LightComponent");
+    components.RegisterComponent<AnimationComponent>("AnimationComponent");
+    components.RegisterComponent<AudioSourceComponent>("AudioSourceComponent");
+    components.RegisterComponent<NavAgentComponent>("NavAgentComponent");
+    components.RegisterComponent<NavWaypointComponent>("NavWaypointComponent");
+    components.RegisterComponent<RuntimeUIComponent>("RuntimeUIComponent");
 
 	components.DumpRegisteredComponents();
 
@@ -180,67 +467,11 @@ int main() {
     inputSystem.BindAxis("MoveX", "MoveRight", "MoveLeft");
 
     ScriptSystem scriptSystem;
-    scriptSystem.Init(&components);
+    scriptSystem.Init(&components, &entities);
     scriptSystem.SetInputSystem(&inputSystem);
-
-
-    for (int i = 0; i < 8; ++i) {
-        Entity e = entities.CreateEntity();
-        TransformComponent t;
-        MeshComponent mesh;
-        t.position = { float(i * 2 - 7), 0, float(i * 2 - 7) };
-        components.AddComponent(e, t);
-        components.AddComponent(e, mesh);
-    }
-
-    Entity player = entities.CreateEntity();
-
-    TransformComponent t;
-    MeshComponent playerMesh;
-    components.AddComponent(player, t);
-    components.AddComponent(player, playerMesh);
-    PhysicsComponent Phys;
-    PlayerControllerComponent pc;
-    
-
-    pc.moveSpeed = 6.0f;   
-    pc.lookSpeed = 0.15f;
-    components.AddComponent(player, pc);
-    components.AddComponent(player, Phys);
-
-    ScriptComponent sc;
-    sc.ScriptPath = "Scripts/Test.lua";
-    components.AddComponent(player, sc);
-
-    MaterialComponent mat;
-    mat.albedo = { 0.3f, 0.8f, 0.4f };
-    mat.specular = 0.6f;
-    mat.shininess = 48.0f;
-    components.AddComponent(player, mat);
-
-    Entity lightEntity = entities.CreateEntity();
-    TransformComponent lightTransform;
-    LightComponent light;
-    light.direction = glm::normalize(glm::vec3(-0.4f, -1.0f, -0.2f));
-    light.color = glm::vec3(1.0f, 0.98f, 0.92f);
-    light.intensity = 1.25f;
-    components.AddComponent(lightEntity, lightTransform);
-    components.AddComponent(lightEntity, light);
-
-    /*scriptSystem.LoadScript(
-        components.GetComponent<ScriptComponent>(player)
-    );*/
-
-    Entity cameraEntity = entities.CreateEntity();
-
-    CameraFollowComponent follow;
-    follow.target = player;
-    follow.distance = 5.0f;   // TPS
-    follow.height = 2.0f;
-    follow.smoothness = 8.0f;
-    
-    components.AddComponent<TransformComponent>(cameraEntity, t);
-    components.AddComponent(cameraEntity, follow);
+    AudioSystem audioSystem;
+    audioSystem.Init();
+    scriptSystem.SetAudioSystem(&audioSystem);
 
 	//RunLuaSmokeTest();
 
@@ -252,7 +483,63 @@ int main() {
     SDL_Event event;
     auto last = std::chrono::high_resolution_clock::now();
 
-    Editor editor(&entities, &components, &renderer, &camera, &streamer, &scriptSystem, &inputSystem);
+    std::unique_ptr<Editor> editor;
+    EntityMeta runtimeMeta;
+
+    if (editorShellMode)
+    {
+        editor = std::make_unique<Editor>(&entities, &components, &renderer, &camera, &streamer, &scriptSystem, &inputSystem);
+
+        if (!runtimeOptions.projectPath.empty() &&
+            runtimeOptions.projectPath.extension() == ".meproj")
+        {
+            if (ProjectManager::Load(runtimeOptions.projectPath))
+            {
+                std::cout << "[Project] Opened project from command line: "
+                    << runtimeOptions.projectPath << "\n";
+                RecentProjects::Add(runtimeOptions.projectPath);
+                applyProjectSettings(ProjectManager::GetActive());
+                inputSystem.LoadBindings((ProjectManager::GetActive().rootPath / "Config" / "input_bindings.json").string());
+                editor->LoadActiveProjectScene();
+                appState = AppState::Editor;
+            }
+            else
+            {
+                std::cerr << "[Project] Failed to open project: " << runtimeOptions.projectPath << "\n";
+                running = false;
+            }
+        }
+    }
+    else
+    {
+        if (!runtimeOptions.runtimeRoot.empty())
+        {
+            const std::filesystem::path configPath = runtimeOptions.configDir.empty()
+                ? runtimeOptions.runtimeRoot / "Config" / "game.cfg"
+                : runtimeOptions.configDir / "game.cfg";
+            ProjectManager::LoadRuntimeLayout(
+                runtimeOptions.gameId,
+                runtimeOptions.runtimeRoot,
+                runtimeOptions.assetDir.empty() ? runtimeOptions.runtimeRoot / "Assets" : runtimeOptions.assetDir,
+                runtimeOptions.sceneOverride,
+                configPath);
+        }
+        else if (runtimeOptions.projectPath.empty() || !ProjectManager::Load(runtimeOptions.projectPath))
+        {
+            std::cerr << "[Runtime] Failed to load project for --game mode.\n";
+            running = false;
+        }
+
+        if (running)
+        {
+            applyProjectSettings(ProjectManager::GetActive());
+            inputSystem.LoadBindings((ProjectManager::GetActive().rootPath / "Config" / "input_bindings.json").string());
+            const std::filesystem::path startupScene = ResolveStartupScene(runtimeOptions);
+            SceneSerializer::Load(startupScene.string(), entities, components, runtimeMeta);
+            EventBus::Publish({ "SceneLoaded", 0, "Scene loaded", startupScene.string() });
+            std::cout << "[Runtime] Loaded scene: " << startupScene << "\n";
+        }
+    }
 
     int windowW = 1920;
     int windowH = 1080;
@@ -269,6 +556,9 @@ int main() {
 
         inputSystem.SetGameplayEnabled(allowGameplayInput);*/
         inputSystem.BeginFrame();
+        const bool gameplayHotkeysActive =
+            gameRuntimeMode ||
+            (editor != nullptr && editor->GetEngineMode() == EngineMode::Play);
         // --- Input events ---
         float mouseDX = 0, mouseDY = 0;
 
@@ -291,6 +581,20 @@ int main() {
             if (event.type == SDL_KEYDOWN && !event.key.repeat)
             {
                 inputSystem.OnKeyDown(event.key.keysym.scancode);
+
+                if (gameplayHotkeysActive && event.key.keysym.scancode == SDL_SCANCODE_F5 && ProjectManager::HasActiveProject())
+                {
+                    const auto savePath = ProjectManager::GetActive().rootPath / "Saves" / "quicksave.sav";
+                    std::filesystem::create_directories(savePath.parent_path());
+                    SaveGameManager::Save(savePath, entities, components, runtimeMeta);
+                    EditorConsole::Log("[SaveGame] Saved quicksave to " + savePath.string());
+                }
+                if (gameplayHotkeysActive && event.key.keysym.scancode == SDL_SCANCODE_F9 && ProjectManager::HasActiveProject())
+                {
+                    const auto savePath = ProjectManager::GetActive().rootPath / "Saves" / "quicksave.sav";
+                    SaveGameManager::Load(savePath, entities, components, runtimeMeta);
+                    EditorConsole::Log("[SaveGame] Loaded quicksave from " + savePath.string());
+                }
             }
             else if (event.type == SDL_KEYUP)
             {
@@ -331,8 +635,32 @@ int main() {
         last = now;
 
 
-        if (editor.GetEngineMode() == EngineMode::Play)
+        const bool gameplayActive =
+            gameRuntimeMode ||
+            (editor != nullptr && editor->GetEngineMode() == EngineMode::Play);
+
+        const bool editorPlayMode =
+            editor != nullptr && editor->GetEngineMode() == EngineMode::Play;
+
+        if (gameplayActive)
         {
+            if (editorPlayMode)
+            {
+                scriptSystem.AutoReloadModifiedScripts(entities, components);
+            }
+
+            AnimationSystem::Update(
+                entities,
+                components,
+                dt
+            );
+
+            NavigationSystem::Update(
+                entities,
+                components,
+                dt
+            );
+
             PlayerControllerSystem::Update(
                 entities,
                 components,
@@ -367,6 +695,8 @@ int main() {
                 auto& sc = components.GetComponent<ScriptComponent>(e);
                 scriptSystem.Update(e, sc, dt);
             }
+
+            audioSystem.Update(entities, components);
         }
 
 
@@ -379,82 +709,98 @@ int main() {
         streamer.SetCameraPos(camera.position.x, camera.position.z);
         streamer.Update();*/
 
-        // ---------------- ImGui Frame ----------------
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplSDL2_NewFrame();
-        ImGui::NewFrame();
-
-        //  Dynamically get window size each frame
         SDL_GetWindowSize(window, &windowW, &windowH);
         camera.SetAspect((float)windowW, (float)windowH);
 
-        
-
-        if (appState == AppState::Startup)
+        if (gameRuntimeMode)
         {
-            auto result = startupScreen.Draw();
+            ImGui_ImplOpenGL3_NewFrame();
+            ImGui_ImplSDL2_NewFrame();
+            ImGui::NewFrame();
+            renderer.editorMode = false;
+            renderer.snapGridVisible = false;
+            renderer.RenderToScreen(entities, components, camera, windowW, windowH);
+            UISystem::Draw(entities, components, windowW, windowH);
+            ImGui::Render();
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+            SDL_GL_SwapWindow(window);
+        }
+        else
+        {
+            ImGui_ImplOpenGL3_NewFrame();
+            ImGui_ImplSDL2_NewFrame();
+            ImGui::NewFrame();
 
-            if (result.projectChosen && !result.projectPath.empty())
+            if (appState == AppState::Startup)
             {
-                ImGui::ClearActiveID();
+                auto result = startupScreen->Draw();
 
-                bool projectReady = false;
+                if (result.projectChosen && !result.projectPath.empty())
+                {
+                    ImGui::ClearActiveID();
 
-                //  Decide by extension
-                if (result.projectPath.extension() == ".meproj")
-                {
-                    // Open existing project
-                    projectReady = ProjectManager::Load(result.projectPath);
-                }
-                else
-                {
-                    // New project (folder path)
-                    ProjectManager::Create(result.projectPath);
-                    projectReady = true;
-                }
+                    bool projectReady = false;
 
-                if (projectReady)
-                {
-                    RecentProjects::Add(
-                        result.projectPath.extension() == ".meproj"
-                        ? result.projectPath
-                        : ProjectManager::GetActive().projectFile
-                    );
+                    if (result.projectPath.extension() == ".meproj")
+                    {
+                        projectReady = ProjectManager::Load(result.projectPath);
+                    }
+                    else
+                    {
+                        ProjectManager::Create(result.projectPath);
+                        projectReady = true;
+                    }
 
-                    appState = AppState::Editor;
-                }
-                else
-                {
-                    startupScreen.NotifyLoadError();
+                    if (projectReady)
+                    {
+                        if (ProjectManager::HasActiveProject())
+                        {
+                            applyProjectSettings(ProjectManager::GetActive());
+                            inputSystem.LoadBindings((ProjectManager::GetActive().rootPath / "Config" / "input_bindings.json").string());
+                            if (editor != nullptr)
+                            {
+                                editor->LoadActiveProjectScene();
+                            }
+                        }
+                        RecentProjects::Add(
+                            result.projectPath.extension() == ".meproj"
+                            ? result.projectPath
+                            : ProjectManager::GetActive().projectFile
+                        );
+
+                        appState = AppState::Editor;
+                    }
+                    else
+                    {
+                        startupScreen->NotifyLoadError();
+                    }
                 }
             }
+            else if (appState == AppState::Editor && editor != nullptr)
+            {
+                editor->Draw();
+                if (editorPlayMode)
+                {
+                    UISystem::Draw(entities, components, windowW, windowH);
+                }
+            }
+
+            ImGui::Render();
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+            if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+            {
+                SDL_Window* backup_current_window = SDL_GL_GetCurrentWindow();
+                SDL_GLContext backup_current_context = SDL_GL_GetCurrentContext();
+
+                ImGui::UpdatePlatformWindows();
+                ImGui::RenderPlatformWindowsDefault();
+
+                SDL_GL_MakeCurrent(backup_current_window, backup_current_context);
+            }
+
+            SDL_GL_SwapWindow(window);
         }
-        else if (appState == AppState::Editor)
-        {
-            editor.Draw();
-        }
-
-
-        
-       
-
-        // ---------------- Render ImGui ----------------
-        ImGui::Render();
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-
-    
-        if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
-        {
-            SDL_Window* backup_current_window = SDL_GL_GetCurrentWindow();
-            SDL_GLContext backup_current_context = SDL_GL_GetCurrentContext();
-
-            ImGui::UpdatePlatformWindows();
-            ImGui::RenderPlatformWindowsDefault();
-
-            SDL_GL_MakeCurrent(backup_current_window, backup_current_context);
-        }
-
-        SDL_GL_SwapWindow(window);
     }
 
     // ---------------- Shutdown ----------------
@@ -468,7 +814,12 @@ int main() {
     SDL_Quit();
 
     scriptSystem.Shutdown();
+    audioSystem.Shutdown();
+    EventBus::Clear();
     
     delete allocator;
     return 0;
 }
+
+
+

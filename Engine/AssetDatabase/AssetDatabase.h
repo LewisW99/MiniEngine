@@ -37,6 +37,7 @@ public:
     const std::vector<AssetInfo>& GetAssets() const { return assets; }
     std::vector<AssetInfo>& GetAssets() { return assets; }
     void ClearPreviews();
+    void SetRootPath(const std::filesystem::path& rootPath) { projectRoot = rootPath; }
 
     inline const char* AssetTypeToString(AssetType type)
     {
@@ -54,5 +55,6 @@ public:
 
 private:
     std::vector<AssetInfo> assets;
+    std::filesystem::path projectRoot;
     AssetType DetectType(const std::filesystem::path& ext);
 };

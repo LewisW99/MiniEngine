@@ -13,13 +13,20 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 #include "../Engine/AssetDatabase/AssetImporter.h"
+#include "../Engine/Components/AudioSourceComponent.h"
+#include "../Engine/Components/AnimationComponent.h"
 #include "../Engine/Components/LightComponent.h"
 #include "../Engine/Components/MaterialComponent.h"
 #include "../Engine/Components/MeshComponent.h"
+#include "../Engine/Components/NavAgentComponent.h"
+#include "../Engine/Components/NavWaypointComponent.h"
+#include "../Engine/Components/RuntimeUIComponent.h"
 #include "../Engine/ImGuizmo.h"
+#include "../Engine/PrefabSerializer.h"
 #include "../Engine/Rendering/ResourceManager.h"
 #include "../Engine/SceneSerializer.h"
 #include "Editor/Managers/ProjectManager.h"
+#include "PrototypeBuilder.h"
 #include <sstream>
 #include "../Engine/Components/CameraFollowComponent.h"
 #include "../Engine/Components/Physics/PhysicsComponent.h"
@@ -28,6 +35,7 @@
 #include "../Engine/InputSystem.h"
 #include "../Engine/Scripting/ScriptComponent.h"
 #include "Scripting/ScriptAPI.h"
+#include "../Engine/Renderer.h"
 
 #pragma comment(lib, "Comdlg32.lib")
 
@@ -52,6 +60,31 @@ sizeof(g_ColliderPresets) / sizeof(ColliderPreset);
 
 namespace
 {
+    constexpr const char* kAssetPayloadModel = "ASSET_MODEL_PATH";
+    constexpr const char* kAssetPayloadTexture = "ASSET_TEXTURE_PATH";
+    constexpr const char* kAssetPayloadAudio = "ASSET_AUDIO_PATH";
+    constexpr const char* kAssetPayloadScript = "ASSET_SCRIPT_PATH";
+    constexpr const char* kAssetPayloadPrefab = "ASSET_PREFAB_PATH";
+
+    const char* GetPayloadType(const AssetType type)
+    {
+        switch (type)
+        {
+        case AssetType::Model:
+            return kAssetPayloadModel;
+        case AssetType::Texture:
+            return kAssetPayloadTexture;
+        case AssetType::Audio:
+            return kAssetPayloadAudio;
+        case AssetType::Script:
+            return kAssetPayloadScript;
+        case AssetType::Prefab:
+            return kAssetPayloadPrefab;
+        default:
+            return nullptr;
+        }
+    }
+
     template<typename T>
     void RemoveComponentIfPresent(ComponentManager& components, const Entity entity)
     {
@@ -67,9 +100,14 @@ namespace
         RemoveComponentIfPresent<MeshComponent>(components, entity);
         RemoveComponentIfPresent<MaterialComponent>(components, entity);
         RemoveComponentIfPresent<LightComponent>(components, entity);
+        RemoveComponentIfPresent<AnimationComponent>(components, entity);
         RemoveComponentIfPresent<PhysicsComponent>(components, entity);
         RemoveComponentIfPresent<ColliderComponent>(components, entity);
+        RemoveComponentIfPresent<NavAgentComponent>(components, entity);
+        RemoveComponentIfPresent<NavWaypointComponent>(components, entity);
+        RemoveComponentIfPresent<RuntimeUIComponent>(components, entity);
         RemoveComponentIfPresent<ScriptComponent>(components, entity);
+        RemoveComponentIfPresent<AudioSourceComponent>(components, entity);
         RemoveComponentIfPresent<PlayerControllerComponent>(components, entity);
         RemoveComponentIfPresent<CameraFollowComponent>(components, entity);
     }
@@ -89,9 +127,14 @@ namespace
         CloneComponentIfPresent<MeshComponent>(components, source, dest);
         CloneComponentIfPresent<MaterialComponent>(components, source, dest);
         CloneComponentIfPresent<LightComponent>(components, source, dest);
+        CloneComponentIfPresent<AnimationComponent>(components, source, dest);
         CloneComponentIfPresent<PhysicsComponent>(components, source, dest);
         CloneComponentIfPresent<ColliderComponent>(components, source, dest);
+        CloneComponentIfPresent<NavAgentComponent>(components, source, dest);
+        CloneComponentIfPresent<NavWaypointComponent>(components, source, dest);
+        CloneComponentIfPresent<RuntimeUIComponent>(components, source, dest);
         CloneComponentIfPresent<ScriptComponent>(components, source, dest);
+        CloneComponentIfPresent<AudioSourceComponent>(components, source, dest);
         CloneComponentIfPresent<PlayerControllerComponent>(components, source, dest);
         CloneComponentIfPresent<CameraFollowComponent>(components, source, dest);
     }
@@ -150,10 +193,71 @@ static std::string GetLuaTemplateText(
     case ScriptTemplate::Rotator:
         return
             "-- " + scriptName + ".lua\n"
-            "-- Rotation placeholder\n\n"
+            "-- Rotating object example\n\n"
             "local rotationSpeed = 45.0\n\n"
             "function OnUpdate(self, dt)\n"
-            "    -- Rotation API coming later\n"
+            "    Transform.Rotate(self, 0, rotationSpeed * dt, 0)\n"
+            "end\n";
+
+    case ScriptTemplate::BasicMover:
+        return
+            "-- " + scriptName + ".lua\n"
+            "-- Basic mover using Transform.Translate\n\n"
+            "local speed = 2.5\n\n"
+            "function OnUpdate(self, dt)\n"
+            "    Transform.Translate(self, speed * dt, 0, 0)\n"
+            "end\n";
+
+    case ScriptTemplate::TriggerInteractable:
+        return
+            "-- " + scriptName + ".lua\n"
+            "-- Trigger/interactable example\n\n"
+            "local active = true\n\n"
+            "function OnStart(self)\n"
+            "    print(\"Interactable ready\")\n"
+            "end\n\n"
+            "function OnUpdate(self, dt)\n"
+            "    if not active then\n"
+            "        return\n"
+            "    end\n\n"
+            "    if Input.Pressed(\"Jump\") then\n"
+            "        active = false\n"
+            "        print(\"Interaction triggered\")\n"
+            "    end\n"
+            "end\n";
+
+    case ScriptTemplate::AudioTrigger:
+        return
+            "-- " + scriptName + ".lua\n"
+            "-- Plays an audio source when Jump is pressed\n\n"
+            "function OnUpdate(self, dt)\n"
+            "    if Input.JumpPressed() then\n"
+            "        Audio.Play(self)\n"
+            "    end\n"
+            "end\n";
+
+    case ScriptTemplate::LightPulse:
+        return
+            "-- " + scriptName + ".lua\n"
+            "-- Pulses a light intensity over time\n\n"
+            "local time = 0.0\n\n"
+            "function OnUpdate(self, dt)\n"
+            "    time = time + dt\n"
+            "    local intensity = 1.0 + math.sin(time * 3.0) * 0.5\n"
+            "    Light.SetIntensity(self, intensity)\n"
+            "end\n";
+
+    case ScriptTemplate::SimplePickup:
+        return
+            "-- " + scriptName + ".lua\n"
+            "-- Simple pickup behaviour\n\n"
+            "local spinSpeed = 90.0\n\n"
+            "function OnUpdate(self, dt)\n"
+            "    Transform.Rotate(self, 0, spinSpeed * dt, 0)\n\n"
+            "    if Input.Pressed(\"Jump\") then\n"
+            "        Audio.PlayOneShot(\"Assets/Audio/pickup.wav\")\n"
+            "        Entity.Destroy(self)\n"
+            "    end\n"
             "end\n";
 
     case ScriptTemplate::Empty:
@@ -312,6 +416,25 @@ Editor::Editor(EntityManager* entities,
 {
 }
 
+bool Editor::LoadActiveProjectScene()
+{
+    if (!ProjectManager::HasActiveProject())
+    {
+        return false;
+    }
+
+    entityMgr->Clear();
+    compMgr->Clear();
+    meta.Clear();
+    selectedEntity = {};
+    renamingEntity = {};
+
+    SceneSerializer::Load(ProjectManager::GetActive().scenePath.string(), *entityMgr, *compMgr, meta);
+    EnsureDefaultDirectionalLight();
+    SanitizeSelection();
+    return true;
+}
+
 static int ScriptEditorCallback(ImGuiInputTextCallbackData* data)
 {
     Editor* editor = (Editor*)data->UserData;
@@ -324,6 +447,298 @@ static int ScriptEditorCallback(ImGuiInputTextCallbackData* data)
     return 0;
 }
 
+void Editor::RefreshAssetDatabase()
+{
+    if (!ProjectManager::HasActiveProject())
+    {
+        return;
+    }
+
+    assetDB.ClearPreviews();
+    assetDB.SetRootPath(ProjectManager::GetActive().rootPath);
+    assetDB.Scan(ProjectManager::GetActive().rootPath.string());
+    selectedAsset = nullptr;
+    assetsScanned = true;
+}
+
+const AssetInfo* Editor::FindAssetByPath(const std::string& assetPath) const
+{
+    for (const auto& asset : assetDB.GetAssets())
+    {
+        if (asset.path == assetPath)
+        {
+            return &asset;
+        }
+    }
+
+    return nullptr;
+}
+
+bool Editor::AcceptAssetPayload(const char* payloadType, std::string& assetPath) const
+{
+    if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(payloadType))
+    {
+        assetPath.assign(static_cast<const char*>(payload->Data), payload->DataSize > 0 ? payload->DataSize - 1 : 0);
+        return true;
+    }
+
+    return false;
+}
+
+bool Editor::PackageProject()
+{
+    if (!ProjectManager::HasActiveProject())
+    {
+        return false;
+    }
+
+    std::string error;
+    if (!PrototypeBuilder::Build(ProjectManager::GetActive().projectFile, &error))
+    {
+        EditorConsole::Error("[Packaging] " + error);
+        return false;
+    }
+
+    const auto& project = ProjectManager::GetActive();
+    const std::filesystem::path outputRoot = project.buildOutputPath.is_absolute()
+        ? project.buildOutputPath
+        : project.rootPath / project.buildOutputPath;
+    if (!error.empty())
+    {
+        EditorConsole::Log(error);
+    }
+    EditorConsole::Log("[Packaging] Wrote prototype build to " + outputRoot.string());
+    EditorConsole::Log("[Packaging] Launch packaged runtime with " + (outputRoot / "Game.exe").string());
+    return true;
+}
+
+bool Editor::SaveSelectedAsPrefab()
+{
+    if (!selectedEntity || !entityMgr->IsAlive(selectedEntity) || !ProjectManager::HasActiveProject())
+    {
+        return false;
+    }
+
+    const auto& project = ProjectManager::GetActive();
+    const std::filesystem::path prefabDir = project.rootPath / "Assets" / "Prefabs";
+    std::error_code ec;
+    std::filesystem::create_directories(prefabDir, ec);
+
+    std::string prefabName = meta.GetName(selectedEntity);
+    if (prefabName.empty())
+    {
+        prefabName = "Prefab_" + std::to_string(selectedEntity.id);
+    }
+    std::replace(prefabName.begin(), prefabName.end(), ' ', '_');
+
+    const std::filesystem::path prefabPath = prefabDir / (prefabName + ".prefab");
+    if (!PrefabSerializer::Save(prefabPath, selectedEntity, *compMgr, meta))
+    {
+        EditorConsole::Error("[Prefab] Failed to save prefab: " + prefabPath.string());
+        return false;
+    }
+
+    RefreshAssetDatabase();
+    EditorConsole::Log("[Prefab] Saved prefab: " + prefabPath.string());
+    return true;
+}
+
+Vec3 Editor::GetSpawnPositionInFrontOfCamera(const float distance) const
+{
+    if (camera == nullptr)
+    {
+        return {};
+    }
+
+    const glm::vec3 spawnPosition = camera->position + (camera->forward * distance);
+    return Vec3(spawnPosition.x, spawnPosition.y, spawnPosition.z);
+}
+
+bool Editor::TryGetSceneDropPosition(const ImVec2& imageMin, const ImVec2& imageMax, Vec3& outPosition) const
+{
+    if (camera == nullptr)
+    {
+        return false;
+    }
+
+    const ImVec2 mousePos = ImGui::GetMousePos();
+    if (mousePos.x < imageMin.x || mousePos.x > imageMax.x ||
+        mousePos.y < imageMin.y || mousePos.y > imageMax.y)
+    {
+        return false;
+    }
+
+    const ImVec2 imageSize(imageMax.x - imageMin.x, imageMax.y - imageMin.y);
+    if (imageSize.x <= 0.0f || imageSize.y <= 0.0f)
+    {
+        return false;
+    }
+
+    const glm::vec2 ndc(
+        ((mousePos.x - imageMin.x) / imageSize.x) * 2.0f - 1.0f,
+        1.0f - ((mousePos.y - imageMin.y) / imageSize.y) * 2.0f);
+
+    const glm::mat4 proj = glm::perspective(glm::radians(camera->fov), camera->aspect, camera->nearPlane, camera->farPlane);
+    const glm::mat4 view = glm::lookAt(camera->position, camera->position + camera->forward, camera->up);
+    const glm::mat4 invViewProj = glm::inverse(proj * view);
+
+    glm::vec4 nearWorld = invViewProj * glm::vec4(ndc.x, ndc.y, -1.0f, 1.0f);
+    glm::vec4 farWorld = invViewProj * glm::vec4(ndc.x, ndc.y, 1.0f, 1.0f);
+    nearWorld /= nearWorld.w;
+    farWorld /= farWorld.w;
+
+    const glm::vec3 rayOrigin = glm::vec3(nearWorld);
+    const glm::vec3 rayDirection = glm::normalize(glm::vec3(farWorld - nearWorld));
+    if (std::abs(rayDirection.y) <= 0.0001f)
+    {
+        return false;
+    }
+
+    const float t = -rayOrigin.y / rayDirection.y;
+    if (t <= 0.0f)
+    {
+        return false;
+    }
+
+    const glm::vec3 hitPoint = rayOrigin + rayDirection * t;
+    outPosition = Vec3(hitPoint.x, hitPoint.y, hitPoint.z);
+    return true;
+}
+
+Entity Editor::CreateEntityFromAsset(const AssetInfo& asset, const Vec3* spawnPosition)
+{
+    Entity entity = entityMgr->CreateEntity();
+    TransformComponent transform;
+    transform.position = spawnPosition != nullptr ? *spawnPosition : GetSpawnPositionInFrontOfCamera();
+    compMgr->AddComponent(entity, transform);
+    meta.SetName(entity, std::filesystem::path(asset.path).stem().string());
+
+    switch (asset.type)
+    {
+    case AssetType::Model:
+    {
+        MeshComponent mesh;
+        mesh.meshPath = asset.path;
+        compMgr->AddComponent(entity, mesh);
+        compMgr->AddComponent(entity, MaterialComponent{});
+        break;
+    }
+    case AssetType::Script:
+    {
+        ScriptComponent script;
+        script.ScriptPath = asset.path;
+        compMgr->AddComponent(entity, script);
+        break;
+    }
+    case AssetType::Prefab:
+    {
+        const Vec3 resolvedSpawnPosition = spawnPosition != nullptr
+            ? *spawnPosition
+            : GetSpawnPositionInFrontOfCamera();
+        const Entity prefabEntity = PrefabSerializer::Instantiate(asset.path, *entityMgr, *compMgr, meta, &resolvedSpawnPosition);
+        if (prefabEntity)
+        {
+            selectedEntity = prefabEntity;
+            return prefabEntity;
+        }
+        break;
+    }
+    default:
+        break;
+    }
+
+    selectedEntity = entity;
+    return entity;
+}
+
+Entity Editor::CreateDirectionalLightEntity(const Vec3* spawnPosition, const bool selectEntity)
+{
+    Entity entity = entityMgr->CreateEntity();
+    TransformComponent transform;
+    transform.position = spawnPosition != nullptr ? *spawnPosition : GetSpawnPositionInFrontOfCamera(8.0f);
+    compMgr->AddComponent(entity, transform);
+
+    LightComponent light;
+    light.direction = glm::normalize(glm::vec3(-0.35f, -1.0f, -0.2f));
+    light.color = glm::vec3(1.0f, 0.98f, 0.92f);
+    light.intensity = 1.25f;
+    compMgr->AddComponent(entity, light);
+
+    meta.SetName(entity, "Directional Light");
+    if (selectEntity)
+    {
+        selectedEntity = entity;
+        renamingEntity = entity;
+    }
+
+    return entity;
+}
+
+void Editor::EnsureDefaultDirectionalLight()
+{
+    for (uint32_t id = 0; id < entityMgr->GetMaxEntities(); ++id)
+    {
+        const Entity entity{ id };
+        if (entityMgr->IsAlive(entity) && compMgr->HasComponent<LightComponent>(entity))
+        {
+            if (!compMgr->HasComponent<TransformComponent>(entity))
+            {
+                TransformComponent transform;
+                transform.position = GetSpawnPositionInFrontOfCamera(8.0f);
+                compMgr->AddComponent(entity, transform);
+            }
+            return;
+        }
+    }
+
+    CreateDirectionalLightEntity(nullptr, false);
+}
+
+void Editor::ApplyAssetToSelectedEntity(const AssetInfo& asset)
+{
+    if (!selectedEntity || !entityMgr->IsAlive(selectedEntity))
+    {
+        return;
+    }
+
+    if (asset.type == AssetType::Model)
+    {
+        if (!compMgr->HasComponent<TransformComponent>(selectedEntity))
+        {
+            compMgr->AddComponent(selectedEntity, TransformComponent{});
+        }
+
+        if (!compMgr->HasComponent<MeshComponent>(selectedEntity))
+        {
+            compMgr->AddComponent(selectedEntity, MeshComponent{});
+        }
+
+        auto& mesh = compMgr->GetComponent<MeshComponent>(selectedEntity);
+        mesh.meshPath = asset.path;
+
+        if (!compMgr->HasComponent<MaterialComponent>(selectedEntity))
+        {
+            compMgr->AddComponent(selectedEntity, MaterialComponent{});
+        }
+    }
+    else if (asset.type == AssetType::Texture && compMgr->HasComponent<MaterialComponent>(selectedEntity))
+    {
+        auto& material = compMgr->GetComponent<MaterialComponent>(selectedEntity);
+        material.albedoTexture = asset.path;
+        material.useTexture = true;
+    }
+    else if (asset.type == AssetType::Script)
+    {
+        if (!compMgr->HasComponent<ScriptComponent>(selectedEntity))
+        {
+            compMgr->AddComponent(selectedEntity, ScriptComponent{});
+        }
+
+        auto& script = compMgr->GetComponent<ScriptComponent>(selectedEntity);
+        script.ScriptPath = asset.path;
+    }
+}
+
 // Editor Drawing
 void Editor::Draw()
 {
@@ -332,8 +747,15 @@ void Editor::Draw()
     if(!ProjectManager::HasActiveProject())
 		return;
 
+    SanitizeSelection();
+
 
     const auto& project = ProjectManager::GetActive();
+    if (defaultLightProjectFile != project.projectFile)
+    {
+        defaultLightProjectFile = project.projectFile;
+        EnsureDefaultDirectionalLight();
+    }
 	AppState appState = AppState::Editor;
     
     BeginDockSpace();
@@ -358,6 +780,7 @@ void Editor::Draw()
     if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_O))
     {
         SceneSerializer::Load(project.scenePath.string(), *entityMgr, *compMgr, meta);
+        EnsureDefaultDirectionalLight();
         statusText = "Scene Loaded!";
         statusTimer = 2.0f;
     }
@@ -373,13 +796,32 @@ void Editor::Draw()
                 compMgr->Clear();
                 meta.Clear();
                 selectedEntity = {};
+                EnsureDefaultDirectionalLight();
             }
 
             if (ImGui::MenuItem("Save Scene", "Ctrl+S"))
                 SceneSerializer::Save(project.scenePath.string(), *entityMgr, *compMgr, meta);
 
             if (ImGui::MenuItem("Load Scene", "Ctrl+O"))
+            {
                 SceneSerializer::Load(project.scenePath.string(), *entityMgr, *compMgr, meta);
+                EnsureDefaultDirectionalLight();
+            }
+
+            if (selectedEntity && entityMgr->IsAlive(selectedEntity) && ImGui::MenuItem("Save Selected As Prefab"))
+            {
+                SaveSelectedAsPrefab();
+            }
+
+            if (ImGui::MenuItem("Set Current Scene As Startup"))
+            {
+                ProjectManager::SetStartupScene(project.scenePath);
+            }
+
+            if (ImGui::MenuItem("Build Prototype"))
+            {
+                PackageProject();
+            }
 
             if (ImGui::MenuItem("Close Project"))
             {
@@ -404,6 +846,11 @@ void Editor::Draw()
                 meta.SetName(e, "Entity " + std::to_string(e.id));
                 selectedEntity = e;
                 renamingEntity = e;
+            }
+
+            if (ImGui::MenuItem("Add Directional Light"))
+            {
+                CreateDirectionalLightEntity();
             }
 
             if (selectedEntity && entityMgr->IsAlive(selectedEntity))
@@ -469,6 +916,29 @@ void Editor::Draw()
                 nullptr,
                 &showInputDebug
             );
+            if (renderer != nullptr)
+            {
+                ImGui::MenuItem(
+                    "Collision Debug Overlay",
+                    nullptr,
+                    &renderer->collisionDebugVisible
+                );
+                ImGui::MenuItem(
+                    "Grounded Indicator",
+                    nullptr,
+                    &renderer->collisionGroundedVisible
+                );
+                ImGui::MenuItem(
+                    "Velocity Indicator",
+                    nullptr,
+                    &renderer->collisionVelocityVisible
+                );
+                ImGui::MenuItem(
+                    "Light Gizmos",
+                    nullptr,
+                    &renderer->lightGizmoVisible
+                );
+            }
 
             ImGui::EndMenu();
         }
@@ -497,11 +967,25 @@ void Editor::Draw()
     DrawHierarchy();
     DrawSceneView();
     DrawDetails();
+    DrawProjectSettingsPanel();
 	DrawAssetsPanel();
     DrawScriptEditor();
     DrawCreateScriptPopup();
 	DrawConsoleWindow();
     DrawInputDebug(*inputSystem);
+}
+
+void Editor::SanitizeSelection()
+{
+    if (selectedEntity && !entityMgr->IsAlive(selectedEntity))
+    {
+        selectedEntity = {};
+    }
+
+    if (renamingEntity && !entityMgr->IsAlive(renamingEntity))
+    {
+        renamingEntity = {};
+    }
 }
 
 // scene view panel (center)
@@ -521,10 +1005,59 @@ void Editor::DrawSceneView()
     {
         renderer->editorMode = true;
         renderer->RenderToTexture(*entityMgr, *compMgr, *camera, texW, texH, selectedEntity);
+        static const char* renderModeNames[] = { "Lit", "Unlit", "Reflections", "Wireframe", "Normals" };
+        int renderModeIndex = static_cast<int>(renderer->viewMode);
+        ImGui::SetNextItemWidth(140.0f);
+        if (ImGui::Combo("##SceneRenderMode", &renderModeIndex, renderModeNames, IM_ARRAYSIZE(renderModeNames)))
+        {
+            renderer->viewMode = static_cast<Renderer::ViewMode>(renderModeIndex);
+        }
+        ImGui::SameLine();
+        ImGui::Checkbox("Post FX", &renderer->postProcessingEnabled);
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(70.0f);
+        ImGui::DragFloat("Exposure", &renderer->exposure, 0.01f, 0.1f, 4.0f);
         ImTextureID tex = (ImTextureID)(intptr_t)renderer->GetSceneTextureID();
 
+        ImVec2 sceneImageMin = ImGui::GetCursorScreenPos();
+        ImVec2 sceneImageMax(sceneImageMin.x + avail.x, sceneImageMin.y + avail.y);
         if (tex)
+        {
             ImGui::Image(tex, avail, ImVec2(0, 1), ImVec2(1, 0));
+            sceneImageMin = ImGui::GetItemRectMin();
+            sceneImageMax = ImGui::GetItemRectMax();
+        }
+
+        if (ImGui::BeginDragDropTarget())
+        {
+            std::string assetPath;
+            Vec3 dropPosition = GetSpawnPositionInFrontOfCamera();
+            TryGetSceneDropPosition(sceneImageMin, sceneImageMax, dropPosition);
+
+            if (AcceptAssetPayload(kAssetPayloadModel, assetPath))
+            {
+                if (const AssetInfo* asset = FindAssetByPath(assetPath))
+                {
+                    CreateEntityFromAsset(*asset, &dropPosition);
+                }
+            }
+            else if (AcceptAssetPayload(kAssetPayloadScript, assetPath))
+            {
+                if (const AssetInfo* asset = FindAssetByPath(assetPath))
+                {
+                    CreateEntityFromAsset(*asset, &dropPosition);
+                }
+            }
+            else if (AcceptAssetPayload(kAssetPayloadPrefab, assetPath))
+            {
+                if (const AssetInfo* asset = FindAssetByPath(assetPath))
+                {
+                    CreateEntityFromAsset(*asset, &dropPosition);
+                }
+            }
+
+            ImGui::EndDragDropTarget();
+        }
     }
     else
     {
@@ -602,7 +1135,9 @@ void Editor::DrawSceneView()
     }
 
     //ImGuizmo Manipulation
-    if (selectedEntity && entityMgr->IsAlive(selectedEntity))
+    if (selectedEntity &&
+        entityMgr->IsAlive(selectedEntity) &&
+        compMgr->HasComponent<TransformComponent>(selectedEntity))
     {
         auto& transform = compMgr->GetComponent<TransformComponent>(selectedEntity);
 
@@ -624,34 +1159,9 @@ void Editor::DrawSceneView()
         model = glm::scale(model, glm::vec3(transform.scale.x, transform.scale.y, transform.scale.z));
 
         // ---------------- Gizmo controls ----------------
-        static ImGuizmo::OPERATION gizmoOperation = ImGuizmo::TRANSLATE;
-        static ImGuizmo::MODE gizmoMode = ImGuizmo::WORLD;
-        static bool snapEnabled = false;
-        static float snapValues[3] = { 1.0f, 1.0f, 1.0f };
-
-        // Cycle R → Translate / Rotate / Scale
-        if (ImGui::IsKeyPressed(ImGuiKey_R)) {
-            if (gizmoOperation == ImGuizmo::TRANSLATE)
-                gizmoOperation = ImGuizmo::ROTATE;
-            else if (gizmoOperation == ImGuizmo::ROTATE)
-                gizmoOperation = ImGuizmo::SCALE;
-            else
-                gizmoOperation = ImGuizmo::TRANSLATE;
-        }
-
-        // L toggles Local/World
-        if (ImGui::IsKeyPressed(ImGuiKey_L))
-            gizmoMode = (gizmoMode == ImGuizmo::LOCAL) ? ImGuizmo::WORLD : ImGuizmo::LOCAL;
-
-        // Ctrl = snapping
-        snapEnabled = ImGui::GetIO().KeyCtrl;
-		renderer->snapGridVisible = snapEnabled;
-        renderer -> snapStep = snapValues[0];
-        switch (gizmoOperation) {
-        case ImGuizmo::TRANSLATE: snapValues[0] = snapValues[1] = snapValues[2] = 1.0f; break;
-        case ImGuizmo::ROTATE:    snapValues[0] = snapValues[1] = snapValues[2] = 15.0f; break;
-        case ImGuizmo::SCALE:     snapValues[0] = snapValues[1] = snapValues[2] = 0.1f; break;
-        }
+        EditorGizmoController::TickHotkeys(gizmoState);
+		renderer->snapGridVisible = gizmoState.snapEnabled;
+        renderer->snapStep = gizmoState.snapValues[0];
 
         // Disable camera control while dragging
         if (ImGuizmo::IsUsing())
@@ -663,10 +1173,10 @@ void Editor::DrawSceneView()
 
         // Manipulate
         if (ImGuizmo::Manipulate(&view[0][0], &proj[0][0],
-            gizmoOperation, gizmoMode,
+            gizmoState.operation, gizmoState.mode,
             &model[0][0],
             nullptr,
-            snapEnabled ? snapValues : nullptr))
+            gizmoState.snapEnabled ? gizmoState.snapValues : nullptr))
         {
             glm::vec3 trans, rot, scl;
             ImGuizmo::DecomposeMatrixToComponents(&model[0][0],
@@ -680,10 +1190,16 @@ void Editor::DrawSceneView()
         ImVec2 hudPos = { sceneOrigin.x + 10.0f, sceneOrigin.y + 10.0f };
         ImGui::SetCursorScreenPos(hudPos);
         ImGui::Text("Gizmo: %s | Space: %s | Snap: %s",
-            gizmoOperation == ImGuizmo::TRANSLATE ? "Translate" :
-            gizmoOperation == ImGuizmo::ROTATE ? "Rotate" : "Scale",
-            gizmoMode == ImGuizmo::WORLD ? "World" : "Local",
-            snapEnabled ? "ON (Ctrl)" : "OFF");
+            gizmoState.operation == ImGuizmo::TRANSLATE ? "Translate" :
+            gizmoState.operation == ImGuizmo::ROTATE ? "Rotate" : "Scale",
+            gizmoState.mode == ImGuizmo::WORLD ? "World" : "Local",
+            gizmoState.snapEnabled ? "ON (Ctrl)" : "OFF");
+    }
+    else if (selectedEntity && entityMgr->IsAlive(selectedEntity))
+    {
+        ImVec2 hudPos = { sceneOrigin.x + 10.0f, sceneOrigin.y + 10.0f };
+        ImGui::SetCursorScreenPos(hudPos);
+        ImGui::TextDisabled("Selected entity has no TransformComponent.");
     }
 
     if (statusTimer > 0.0f)
@@ -698,7 +1214,6 @@ void Editor::DrawSceneView()
         ImGui::SetCursorScreenPos(center);
         ImGui::SetWindowFontScale(1.3f);
         ImGui::Text("%s", statusText.c_str());
-        ImGui::PopStyleColor();
     }
 
     ImGui::End();
@@ -892,6 +1407,16 @@ void Editor::DrawDetails()
                 mesh.meshPath = "builtin://cube";
             }
         }
+        ImGui::TextDisabled("Drop a model asset here to assign it.");
+        if (ImGui::BeginDragDropTarget())
+        {
+            std::string assetPath;
+            if (AcceptAssetPayload(kAssetPayloadModel, assetPath))
+            {
+                mesh.meshPath = assetPath;
+            }
+            ImGui::EndDragDropTarget();
+        }
         if (selectedAsset != nullptr && selectedAsset->type == AssetType::Model)
         {
             if (ImGui::Button("Use Selected Model"))
@@ -930,6 +1455,17 @@ void Editor::DrawDetails()
             {
                 material.albedoTexture = texturePathBuffer;
             }
+            ImGui::TextDisabled("Drop a texture asset here to assign it.");
+            if (ImGui::BeginDragDropTarget())
+            {
+                std::string assetPath;
+                if (AcceptAssetPayload(kAssetPayloadTexture, assetPath))
+                {
+                    material.albedoTexture = assetPath;
+                    material.useTexture = true;
+                }
+                ImGui::EndDragDropTarget();
+            }
             if (selectedAsset != nullptr && selectedAsset->type == AssetType::Texture)
             {
                 if (ImGui::Button("Use Selected Texture"))
@@ -954,6 +1490,10 @@ void Editor::DrawDetails()
     {
         if (hasLight)
         {
+            if (!compMgr->HasComponent<TransformComponent>(selectedEntity))
+            {
+                compMgr->AddComponent(selectedEntity, TransformComponent{});
+            }
             compMgr->AddComponent(selectedEntity, LightComponent{});
         }
         else
@@ -967,11 +1507,28 @@ void Editor::DrawDetails()
         auto& light =
             compMgr->GetComponent<LightComponent>(selectedEntity);
 
+        if (!compMgr->HasComponent<TransformComponent>(selectedEntity))
+        {
+            if (ImGui::Button("Add Transform For Light"))
+            {
+                TransformComponent transform;
+                transform.position = GetSpawnPositionInFrontOfCamera(8.0f);
+                compMgr->AddComponent(selectedEntity, transform);
+            }
+            ImGui::TextDisabled("Light direction is used for lighting. Add a transform to place the gizmo/origin in world space.");
+        }
+
         ImGui::SeparatorText("Light");
+        ImGui::TextDisabled("Transform = world origin, Direction = emitted light direction.");
         ImGui::DragFloat3("Direction", &light.direction.x, 0.05f, -1.0f, 1.0f);
+        if (glm::length(light.direction) <= 0.0001f)
+        {
+            light.direction = glm::vec3(0.0f, -1.0f, 0.0f);
+        }
         ImGui::ColorEdit3("Color", &light.color.x);
         ImGui::SliderFloat("Intensity", &light.intensity, 0.0f, 10.0f);
         ImGui::Checkbox("Light Enabled", &light.enabled);
+        ImGui::TextDisabled("Directional lights act as the current sun/GI driver and update in realtime.");
     }
 
     // ---------------- Asset info ----------------
@@ -1148,6 +1705,17 @@ void Editor::DrawDetails()
             ImGui::EndCombo();
         }
 
+        ImGui::TextDisabled("Drop a script asset here to assign it.");
+        if (ImGui::BeginDragDropTarget())
+        {
+            std::string assetPath;
+            if (AcceptAssetPayload(kAssetPayloadScript, assetPath))
+            {
+                sc.ScriptPath = assetPath;
+            }
+            ImGui::EndDragDropTarget();
+        }
+
         if (!sc.ScriptPath.empty())
         {
             if (ImGui::Button("Open Script"))
@@ -1177,6 +1745,142 @@ void Editor::DrawDetails()
             sc.ScriptPath = "";
             compMgr->AddComponent(selectedEntity, sc);
         }
+    }
+
+    ImGui::Separator();
+
+    bool hasAudioSource =
+        compMgr->HasComponent<AudioSourceComponent>(selectedEntity);
+
+    if (ImGui::Checkbox("Audio Source", &hasAudioSource))
+    {
+        if (hasAudioSource)
+        {
+            compMgr->AddComponent(selectedEntity, AudioSourceComponent{});
+        }
+        else
+        {
+            RemoveComponentIfPresent<AudioSourceComponent>(*compMgr, selectedEntity);
+        }
+    }
+
+    if (hasAudioSource && compMgr->HasComponent<AudioSourceComponent>(selectedEntity))
+    {
+        auto& audio = compMgr->GetComponent<AudioSourceComponent>(selectedEntity);
+        char audioPathBuffer[260] = {};
+        strncpy_s(audioPathBuffer, audio.path.c_str(), sizeof(audioPathBuffer) - 1);
+
+        ImGui::SeparatorText("Audio Source");
+        if (ImGui::InputText("Audio Path", audioPathBuffer, IM_ARRAYSIZE(audioPathBuffer)))
+        {
+            audio.path = audioPathBuffer;
+        }
+        if (ImGui::BeginDragDropTarget())
+        {
+            std::string assetPath;
+            if (AcceptAssetPayload(kAssetPayloadAudio, assetPath))
+            {
+                audio.path = assetPath;
+            }
+            ImGui::EndDragDropTarget();
+        }
+        ImGui::Checkbox("Loop", &audio.loop);
+        ImGui::Checkbox("Play On Start", &audio.playOnStart);
+        ImGui::SliderFloat("Volume", &audio.volume, 0.0f, 1.0f);
+        ImGui::Checkbox("Enabled", &audio.enabled);
+        ImGui::TextDisabled("Spatial playback is reserved for a later prototype pass.");
+    }
+
+    bool hasAnimation = compMgr->HasComponent<AnimationComponent>(selectedEntity);
+    if (ImGui::Checkbox("Transform Animation", &hasAnimation))
+    {
+        if (hasAnimation)
+        {
+            compMgr->AddComponent(selectedEntity, AnimationComponent{});
+        }
+        else
+        {
+            RemoveComponentIfPresent<AnimationComponent>(*compMgr, selectedEntity);
+        }
+    }
+
+    if (hasAnimation && compMgr->HasComponent<AnimationComponent>(selectedEntity))
+    {
+        auto& animation = compMgr->GetComponent<AnimationComponent>(selectedEntity);
+        ImGui::SeparatorText("Animation");
+        ImGui::Checkbox("Playing", &animation.playing);
+        ImGui::Checkbox("Loop", &animation.loop);
+        ImGui::DragFloat("Clip Duration", &animation.clip.duration, 0.01f, 0.0f, 60.0f);
+        ImGui::DragFloat("Current Time", &animation.currentTime, 0.01f, 0.0f, std::max(animation.clip.duration, 0.0f));
+    }
+
+    bool hasNavAgent = compMgr->HasComponent<NavAgentComponent>(selectedEntity);
+    if (ImGui::Checkbox("Navigation Agent", &hasNavAgent))
+    {
+        if (hasNavAgent)
+        {
+            compMgr->AddComponent(selectedEntity, NavAgentComponent{});
+        }
+        else
+        {
+            RemoveComponentIfPresent<NavAgentComponent>(*compMgr, selectedEntity);
+        }
+    }
+
+    if (hasNavAgent && compMgr->HasComponent<NavAgentComponent>(selectedEntity))
+    {
+        auto& nav = compMgr->GetComponent<NavAgentComponent>(selectedEntity);
+        static const char* navModeNames[] = { "Patrol", "Follow", "Chase" };
+        int navMode = static_cast<int>(nav.mode);
+        ImGui::SeparatorText("Navigation");
+        if (ImGui::Combo("Agent Mode", &navMode, navModeNames, IM_ARRAYSIZE(navModeNames)))
+        {
+            nav.mode = static_cast<NavAgentMode>(navMode);
+        }
+        ImGui::DragFloat("Move Speed", &nav.speed, 0.1f, 0.0f, 20.0f);
+        ImGui::DragFloat("Stopping Distance", &nav.stoppingDistance, 0.01f, 0.0f, 5.0f);
+        ImGui::Checkbox("Loop Waypoints", &nav.loop);
+        ImGui::Checkbox("Active Agent", &nav.active);
+    }
+
+    bool hasRuntimeUI = compMgr->HasComponent<RuntimeUIComponent>(selectedEntity);
+    if (ImGui::Checkbox("Runtime UI", &hasRuntimeUI))
+    {
+        if (hasRuntimeUI)
+        {
+            compMgr->AddComponent(selectedEntity, RuntimeUIComponent{});
+        }
+        else
+        {
+            RemoveComponentIfPresent<RuntimeUIComponent>(*compMgr, selectedEntity);
+        }
+    }
+
+    if (hasRuntimeUI && compMgr->HasComponent<RuntimeUIComponent>(selectedEntity))
+    {
+        auto& ui = compMgr->GetComponent<RuntimeUIComponent>(selectedEntity);
+        static const char* uiTypeNames[] = { "Text", "Button", "Image" };
+        static const char* uiAnchorNames[] = { "Top Left", "Top Center", "Top Right", "Center", "Bottom Left", "Bottom Center", "Bottom Right" };
+        int uiType = static_cast<int>(ui.type);
+        int uiAnchor = static_cast<int>(ui.anchor);
+        ImGui::SeparatorText("Runtime UI");
+        if (ImGui::Combo("UI Type", &uiType, uiTypeNames, IM_ARRAYSIZE(uiTypeNames)))
+        {
+            ui.type = static_cast<RuntimeUIElementType>(uiType);
+        }
+        if (ImGui::Combo("Anchor", &uiAnchor, uiAnchorNames, IM_ARRAYSIZE(uiAnchorNames)))
+        {
+            ui.anchor = static_cast<RuntimeUIAnchor>(uiAnchor);
+        }
+        char uiTextBuffer[260] = {};
+        strncpy_s(uiTextBuffer, ui.text.c_str(), sizeof(uiTextBuffer) - 1);
+        if (ImGui::InputText("UI Text", uiTextBuffer, IM_ARRAYSIZE(uiTextBuffer)))
+        {
+            ui.text = uiTextBuffer;
+        }
+        ImGui::DragFloat2("UI Offset", &ui.offsetX, 1.0f);
+        ImGui::DragFloat2("UI Size", &ui.width, 1.0f, 1.0f, 1024.0f);
+        ImGui::Checkbox("Visible", &ui.visible);
     }
 
     if (compMgr->HasComponent<PlayerControllerComponent>(selectedEntity))
@@ -1337,13 +2041,19 @@ void Editor::DrawAssetsPanel()
 
                 switch (selectedType)
                 {
-                case 0: AssetImporter::ImportModel(filePath); break;
+                case 0: AssetImporter::ImportModelAsset(filePath); break;
                 case 1: AssetImporter::ImportTexture(filePath); break;
                 case 2: AssetImporter::ImportAudio(filePath); break;
                 }
 
-                assetDB.ClearPreviews();   
-                assetDB.Scan(ProjectManager::GetActive().assetPath.string());
+                if (!AssetImporter::GetLastError().empty())
+                {
+                    EditorConsole::Error(AssetImporter::GetLastError());
+                }
+                else
+                {
+                    RefreshAssetDatabase();
+                }
             }
             selectedType = -1;
             ImGui::CloseCurrentPopup();
@@ -1368,8 +2078,10 @@ void Editor::DrawAssetsPanel()
 
 
     // --- Grid of Assets ---
-    static bool scanned = false;
-    if (!scanned) { assetDB.Scan(ProjectManager::GetActive().assetPath.string()); scanned = true; }
+    if (!assetsScanned)
+    {
+        RefreshAssetDatabase();
+    }
 
     auto& assets = assetDB.GetAssets();
     int itemsPerRow = 6;
@@ -1377,12 +2089,14 @@ void Editor::DrawAssetsPanel()
 
     for (auto& a : assets)
     {
-        ImGui::BeginGroup();
-
         std::string nameLower = a.name;
         std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), ::tolower);
         if (!query.empty() && nameLower.find(query) == std::string::npos)
+        {
             continue;
+        }
+
+        ImGui::BeginGroup();
 
         if (a.type == AssetType::Texture)
         {
@@ -1396,11 +2110,34 @@ void Editor::DrawAssetsPanel()
             ImGui::Button("MDL", ImVec2(64, 64));
         else if (a.type == AssetType::Audio)
             ImGui::Button("AUD", ImVec2(64, 64));
+        else if (a.type == AssetType::Script)
+            ImGui::Button("LUA", ImVec2(64, 64));
+        else if (a.type == AssetType::Prefab)
+            ImGui::Button("PFB", ImVec2(64, 64));
+        else if (a.type == AssetType::Scene)
+            ImGui::Button("SCN", ImVec2(64, 64));
         else
             ImGui::Button("?", ImVec2(64, 64));
 
         if (ImGui::IsItemClicked())
             selectedAsset = &a;
+
+        if (const char* payloadType = GetPayloadType(a.type); payloadType != nullptr &&
+            ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID))
+        {
+            ImGui::SetDragDropPayload(payloadType, a.path.c_str(), a.path.size() + 1);
+            ImGui::TextUnformatted(a.name.c_str());
+            ImGui::TextDisabled("%s", assetDB.AssetTypeToString(a.type));
+            ImGui::EndDragDropSource();
+        }
+
+        if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+        {
+            if (a.type == AssetType::Model || a.type == AssetType::Script || a.type == AssetType::Prefab)
+            {
+                CreateEntityFromAsset(a);
+            }
+        }
 
         ImGui::TextWrapped("%s", a.name.c_str());
         ImGui::EndGroup();
@@ -1758,6 +2495,14 @@ void Editor::DrawScriptEditor()
         }
     }
 
+    if (scriptSystem != nullptr && !scriptSystem->GetLastReloadMessage().empty())
+    {
+        const ImVec4 statusColor = scriptSystem->WasLastReloadSuccessful()
+            ? ImVec4(0.35f, 1.0f, 0.45f, 1.0f)
+            : ImVec4(1.0f, 0.4f, 0.35f, 1.0f);
+        ImGui::TextColored(statusColor, "%s", scriptSystem->GetLastReloadMessage().c_str());
+    }
+
 
     ImGui::Separator();
 
@@ -1867,6 +2612,13 @@ void Editor::DrawScriptEditor()
                             {
                                 ImGui::Text("%s", fn.signature.c_str());
                                 ImGui::TextDisabled("%s", fn.description.c_str());
+                                if (!fn.example.empty())
+                                {
+                                    ImGui::TextColored(
+                                        ImVec4(0.65f, 0.85f, 1.0f, 1.0f),
+                                        "Example: %s",
+                                        fn.example.c_str());
+                                }
                                 ImGui::Separator();
                             }
 
@@ -1929,7 +2681,12 @@ void Editor::DrawCreateScriptPopup()
         "Player Movement",
         "Camera Follow",
         "Simple AI",
-        "Rotator"
+        "Rotator",
+        "Basic Mover",
+        "Trigger / Interactable",
+        "Audio Trigger",
+        "Light Pulse",
+        "Simple Pickup"
     };
 
     int templateIndex = (int)selectedScriptTemplate;
@@ -2027,6 +2784,76 @@ void Editor::DrawConsoleWindow()
     ImGui::End();
 }
 
+void Editor::DrawProjectSettingsPanel()
+{
+    ImGui::Begin("Project Settings");
+
+    if (!ProjectManager::HasActiveProject())
+    {
+        ImGui::TextDisabled("No active project.");
+        ImGui::End();
+        return;
+    }
+
+    const auto& project = ProjectManager::GetActive();
+    static std::filesystem::path cachedProjectFile;
+    static char startupSceneBuffer[260] = {};
+    static char outputFolderBuffer[260] = {};
+    static char runtimeIdBuffer[128] = {};
+
+    if (cachedProjectFile != project.projectFile)
+    {
+        cachedProjectFile = project.projectFile;
+        std::error_code startupSceneEc;
+        const auto startupSceneRelative = std::filesystem::relative(project.startupScenePath, project.rootPath, startupSceneEc);
+        const std::string startupSceneString = startupSceneEc
+            ? project.startupScenePath.generic_string()
+            : startupSceneRelative.generic_string();
+        strncpy_s(startupSceneBuffer, startupSceneString.c_str(), sizeof(startupSceneBuffer) - 1);
+        strncpy_s(outputFolderBuffer, project.buildOutputPath.generic_string().c_str(), sizeof(outputFolderBuffer) - 1);
+        strncpy_s(runtimeIdBuffer, project.runtimeIdentifier.c_str(), sizeof(runtimeIdBuffer) - 1);
+    }
+
+    ImGui::TextDisabled("Project: %s", project.name.c_str());
+    ImGui::InputText("Startup Scene", startupSceneBuffer, IM_ARRAYSIZE(startupSceneBuffer));
+    if (ImGui::Button("Use Current Scene"))
+    {
+        std::error_code currentSceneEc;
+        const auto currentSceneRelative = std::filesystem::relative(project.scenePath, project.rootPath, currentSceneEc);
+        const std::string currentSceneString = currentSceneEc
+            ? project.scenePath.generic_string()
+            : currentSceneRelative.generic_string();
+        strncpy_s(startupSceneBuffer, currentSceneString.c_str(), sizeof(startupSceneBuffer) - 1);
+    }
+
+    ImGui::InputText("Build Output Folder", outputFolderBuffer, IM_ARRAYSIZE(outputFolderBuffer));
+    ImGui::InputText("Runtime Identifier", runtimeIdBuffer, IM_ARRAYSIZE(runtimeIdBuffer));
+
+    if (ImGui::Button("Save Build Settings"))
+    {
+        const std::filesystem::path startupScene = std::filesystem::path(startupSceneBuffer).is_absolute()
+            ? std::filesystem::path(startupSceneBuffer)
+            : project.rootPath / startupSceneBuffer;
+        const std::filesystem::path buildOutput = std::filesystem::path(outputFolderBuffer).is_absolute()
+            ? std::filesystem::path(outputFolderBuffer)
+            : project.rootPath / outputFolderBuffer;
+
+        ProjectManager::UpdateBuildSettings(startupScene, buildOutput, runtimeIdBuffer);
+        cachedProjectFile.clear();
+        EditorConsole::Log("[Project] Build settings updated.");
+    }
+
+    ImGui::SameLine();
+    if (ImGui::Button("Build Prototype"))
+    {
+        PackageProject();
+    }
+
+    ImGui::Separator();
+    ImGui::TextWrapped("Packaged builds resolve runtime paths relative to Game.exe, so they remain double-clickable even outside the engine folder.");
+    ImGui::End();
+}
+
 void Editor::DrawScriptDocsPanel()
 {
     ImGui::Begin("Script Docs");
@@ -2107,6 +2934,13 @@ void Editor::DrawScriptDocsPanel()
 
                 ImGui::Indent();
                 ImGui::TextWrapped("%s", fn.description.c_str());
+                if (!fn.example.empty())
+                {
+                    ImGui::TextColored(
+                        ImVec4(0.65f, 0.85f, 1.0f, 1.0f),
+                        "Example: %s",
+                        fn.example.c_str());
+                }
                 ImGui::Unindent();
                 ImGui::Separator();
             }

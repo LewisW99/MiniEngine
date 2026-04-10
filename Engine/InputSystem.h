@@ -32,6 +32,9 @@ public:
 
     // Action binding
     void BindAction(const std::string& action, int scancode);
+    void RebindAction(const std::string& action, int scancode);
+    bool SaveBindings(const std::string& path) const;
+    bool LoadBindings(const std::string& path);
 
     // Queries
     bool Pressed(const std::string& action) const;

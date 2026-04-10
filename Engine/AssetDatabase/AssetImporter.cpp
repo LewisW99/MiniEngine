@@ -9,11 +9,76 @@
 
 #include <filesystem>
 #include <iostream>
+#include <limits>
+#include <sstream>
+#include "../../Demo/Editor/Managers/ProjectManager.h"
 
 namespace
 {
     ma_engine gAudioEngine;
     bool gAudioInitialized = false;
+    std::string gLastError;
+
+    void SetLastError(const std::string& message)
+    {
+        gLastError = message;
+        std::cerr << message << "\n";
+    }
+
+    std::string NormalizeProjectRelativePath(const std::filesystem::path& path)
+    {
+        const std::filesystem::path projectRoot = ProjectManager::HasActiveProject()
+            ? ProjectManager::GetActive().rootPath
+            : std::filesystem::current_path();
+        std::error_code ec;
+        const auto relativePath = std::filesystem::relative(path, projectRoot, ec);
+        return ec ? path.generic_string() : relativePath.generic_string();
+    }
+
+    std::filesystem::path ResolveProjectPath(const std::string& path)
+    {
+        const std::filesystem::path source(path);
+        if (source.is_absolute())
+        {
+            return source;
+        }
+
+        if (ProjectManager::HasActiveProject())
+        {
+            return ProjectManager::GetActive().rootPath / source;
+        }
+
+        return std::filesystem::current_path() / source;
+    }
+
+    std::filesystem::path GetImportTargetFolder(const char* folderName)
+    {
+        const std::filesystem::path projectRoot = ProjectManager::HasActiveProject()
+            ? ProjectManager::GetActive().rootPath
+            : std::filesystem::current_path();
+        return projectRoot / "Assets" / folderName;
+    }
+
+    bool CopyIntoProject(const std::filesystem::path& source, const std::filesystem::path& targetFolder)
+    {
+        std::error_code ec;
+        std::filesystem::create_directories(targetFolder, ec);
+        if (ec)
+        {
+            SetLastError("[AssetImporter] Failed to create folder: " + targetFolder.string());
+            return false;
+        }
+
+        const auto destination = targetFolder / source.filename();
+        std::filesystem::copy_file(source, destination, std::filesystem::copy_options::overwrite_existing, ec);
+        if (ec)
+        {
+            SetLastError("[AssetImporter] Copy failed: " + ec.message());
+            return false;
+        }
+
+        return true;
+    }
 
     void InitAudio()
     {
@@ -44,10 +109,12 @@ namespace
 
 MeshData AssetImporter::ImportModel(const std::string& path)
 {
+    ClearLastError();
     MeshData mesh;
     Assimp::Importer importer;
+    const std::filesystem::path resolvedPath = ResolveProjectPath(path);
 
-    const aiScene* scene = importer.ReadFile(path,
+    const aiScene* scene = importer.ReadFile(resolvedPath.string(),
         aiProcess_Triangulate |
         aiProcess_JoinIdenticalVertices |
         aiProcess_SortByPType |
@@ -57,68 +124,190 @@ MeshData AssetImporter::ImportModel(const std::string& path)
 
     if (scene == nullptr || !scene->HasMeshes())
     {
-        std::cerr << "[ModelImporter] Failed to load: " << path << "\n";
+        const std::string assimpError = importer.GetErrorString();
+        SetLastError("[ModelImporter] Failed to load: " + resolvedPath.string() +
+            (assimpError.empty() ? std::string{} : " (" + assimpError + ")"));
         return mesh;
     }
 
-    const aiMesh* sourceMesh = scene->mMeshes[0];
-    mesh.vertices.reserve(sourceMesh->mNumVertices);
-    mesh.indices.reserve(sourceMesh->mNumFaces * 3);
+    std::size_t importedMeshCount = 0;
+    std::size_t skippedMeshCount = 0;
+    std::size_t invalidVertexCount = 0;
+    std::size_t invalidFaceCount = 0;
 
-    for (unsigned int i = 0; i < sourceMesh->mNumVertices; ++i)
+    for (unsigned int meshIndex = 0; meshIndex < scene->mNumMeshes; ++meshIndex)
     {
-        Vertex vertex{};
-
-        if (sourceMesh->HasPositions())
+        const aiMesh* sourceMesh = scene->mMeshes[meshIndex];
+        if (sourceMesh == nullptr || !sourceMesh->HasPositions() || sourceMesh->mNumVertices == 0)
         {
+            ++skippedMeshCount;
+            continue;
+        }
+
+        const std::uint32_t baseVertex = static_cast<std::uint32_t>(mesh.vertices.size());
+        mesh.vertices.reserve(mesh.vertices.size() + sourceMesh->mNumVertices);
+        mesh.indices.reserve(mesh.indices.size() + sourceMesh->mNumFaces * 3);
+        std::vector<std::uint32_t> vertexRemap(
+            sourceMesh->mNumVertices,
+            (std::numeric_limits<std::uint32_t>::max)());
+        bool meshHasValidGeometry = false;
+
+        for (unsigned int i = 0; i < sourceMesh->mNumVertices; ++i)
+        {
+            Vertex vertex{};
             const aiVector3D& position = sourceMesh->mVertices[i];
+            if (!std::isfinite(position.x) || !std::isfinite(position.y) || !std::isfinite(position.z))
+            {
+                ++invalidVertexCount;
+                continue;
+            }
+
             vertex.position = { position.x, position.y, position.z };
+
+            if (sourceMesh->HasNormals())
+            {
+                const aiVector3D& normal = sourceMesh->mNormals[i];
+                vertex.normal = {
+                    std::isfinite(normal.x) ? normal.x : 0.0f,
+                    std::isfinite(normal.y) ? normal.y : 1.0f,
+                    std::isfinite(normal.z) ? normal.z : 0.0f
+                };
+            }
+            else
+            {
+                vertex.normal = { 0.0f, 1.0f, 0.0f };
+            }
+
+            if (sourceMesh->HasTextureCoords(0))
+            {
+                const aiVector3D& uv = sourceMesh->mTextureCoords[0][i];
+                vertex.uv = {
+                    std::isfinite(uv.x) ? uv.x : 0.0f,
+                    std::isfinite(uv.y) ? uv.y : 0.0f
+                };
+            }
+
+            mesh.vertices.push_back(vertex);
+            vertexRemap[i] = static_cast<std::uint32_t>(mesh.vertices.size() - baseVertex - 1);
+            meshHasValidGeometry = true;
         }
 
-        if (sourceMesh->HasNormals())
+        for (unsigned int i = 0; i < sourceMesh->mNumFaces; ++i)
         {
-            const aiVector3D& normal = sourceMesh->mNormals[i];
-            vertex.normal = { normal.x, normal.y, normal.z };
+            const aiFace& face = sourceMesh->mFaces[i];
+            if (face.mNumIndices != 3)
+            {
+                continue;
+            }
+
+            bool validFace = true;
+            for (unsigned int j = 0; j < face.mNumIndices; ++j)
+            {
+                if (face.mIndices[j] >= sourceMesh->mNumVertices ||
+                    vertexRemap[face.mIndices[j]] == (std::numeric_limits<std::uint32_t>::max)())
+                {
+                    validFace = false;
+                    break;
+                }
+            }
+
+            if (!validFace)
+            {
+                ++invalidFaceCount;
+                continue;
+            }
+
+            for (unsigned int j = 0; j < face.mNumIndices; ++j)
+            {
+                mesh.indices.push_back(baseVertex + vertexRemap[face.mIndices[j]]);
+            }
         }
 
-        if (sourceMesh->HasTextureCoords(0))
+        if (meshHasValidGeometry)
         {
-            const aiVector3D& uv = sourceMesh->mTextureCoords[0][i];
-            vertex.uv = { uv.x, uv.y };
+            ++importedMeshCount;
         }
-
-        mesh.vertices.push_back(vertex);
+        else
+        {
+            ++skippedMeshCount;
+        }
     }
 
-    for (unsigned int i = 0; i < sourceMesh->mNumFaces; ++i)
+    if (!mesh.IsValid())
     {
-        const aiFace& face = sourceMesh->mFaces[i];
-        for (unsigned int j = 0; j < face.mNumIndices; ++j)
+        std::ostringstream error;
+        error << "[ModelImporter] No valid mesh data found: " << resolvedPath.string();
+        if (invalidVertexCount > 0 || invalidFaceCount > 0)
         {
-            mesh.indices.push_back(face.mIndices[j]);
+            error << " (invalid vertices: " << invalidVertexCount
+                << ", invalid faces: " << invalidFaceCount << ")";
         }
+        SetLastError(error.str());
+        return {};
     }
 
     std::cout << "[ModelImporter] Loaded "
         << mesh.vertices.size()
         << " vertices, "
         << mesh.indices.size() / 3
-        << " triangles from "
-        << path
+        << " triangles across "
+        << importedMeshCount
+        << " mesh(es) from "
+        << NormalizeProjectRelativePath(resolvedPath)
         << "\n";
+
+    if (skippedMeshCount > 0 || invalidVertexCount > 0 || invalidFaceCount > 0)
+    {
+        std::cout << "[ModelImporter] Skipped "
+            << skippedMeshCount
+            << " mesh(es), "
+            << invalidVertexCount
+            << " invalid vertices, "
+            << invalidFaceCount
+            << " invalid faces.\n";
+    }
 
     return mesh;
 }
 
+bool AssetImporter::ImportModelAsset(const std::string& path)
+{
+    ClearLastError();
+    const std::filesystem::path source = ResolveProjectPath(path);
+    if (!std::filesystem::exists(source))
+    {
+        SetLastError("[AssetImporter] Model source file not found: " + path);
+        return false;
+    }
+
+    const MeshData mesh = ImportModel(path);
+    if (!mesh.IsValid())
+    {
+        return false;
+    }
+
+    if (!CopyIntoProject(source, GetImportTargetFolder("Models")))
+    {
+        return false;
+    }
+
+    std::cout << "[AssetImporter] Imported model to "
+        << NormalizeProjectRelativePath(GetImportTargetFolder("Models") / source.filename())
+        << "\n";
+    return true;
+}
+
 ImportedTexture AssetImporter::LoadTextureData(const std::string& path, const bool flipVertically)
 {
+    ClearLastError();
     ImportedTexture texture;
     stbi_set_flip_vertically_on_load(flipVertically ? 1 : 0);
 
-    unsigned char* pixels = stbi_load(path.c_str(), &texture.width, &texture.height, &texture.channels, 0);
+    const std::filesystem::path resolvedPath = ResolveProjectPath(path);
+    unsigned char* pixels = stbi_load(resolvedPath.string().c_str(), &texture.width, &texture.height, &texture.channels, 0);
     if (pixels == nullptr)
     {
-        std::cerr << "[TextureImporter] Failed to load: " << path << "\n";
+        SetLastError("[TextureImporter] Failed to load: " + resolvedPath.string());
         return texture;
     }
 
@@ -143,44 +332,60 @@ void AssetImporter::ImportTexture(const std::string& path)
         << texture.width << "x" << texture.height << ", "
         << texture.channels << " channels)\n";
 
-    const std::filesystem::path src(path);
-    const std::filesystem::path dst = std::filesystem::current_path() / "Assets" / src.filename();
-
-    std::error_code ec;
-    if (!std::filesystem::exists(dst, ec))
+    const std::filesystem::path src = ResolveProjectPath(path);
+    if (CopyIntoProject(src, GetImportTargetFolder("Textures")))
     {
-        std::filesystem::copy_file(src, dst, std::filesystem::copy_options::overwrite_existing, ec);
-    }
-
-    if (ec)
-    {
-        std::cerr << "[AssetImporter] Copy failed: " << ec.message() << "\n";
-    }
-    else
-    {
-        std::cout << "[AssetImporter] Imported to " << dst.string() << "\n";
+        std::cout << "[AssetImporter] Imported to "
+            << NormalizeProjectRelativePath(GetImportTargetFolder("Textures") / src.filename())
+            << "\n";
     }
 }
 
 void AssetImporter::ImportAudio(const std::string& path)
 {
-    InitAudio();
-
-    if (!gAudioInitialized)
+    ClearLastError();
+    if (!EnsureAudioEngine())
     {
-        std::cerr << "[AudioImporter] Cannot play audio - engine not initialized.\n";
+        SetLastError("[AudioImporter] Cannot play audio - engine not initialized.");
         return;
     }
 
-    const ma_result result = ma_engine_play_sound(&gAudioEngine, path.c_str(), nullptr);
+    const std::filesystem::path source = ResolveProjectPath(path);
+    if (std::filesystem::exists(source))
+    {
+        CopyIntoProject(source, GetImportTargetFolder("Audio"));
+    }
+
+    const ma_result result = ma_engine_play_sound(&gAudioEngine, source.string().c_str(), nullptr);
     if (result != MA_SUCCESS)
     {
-        std::cerr << "[AudioImporter] Failed to play sound: " << path << "\n";
+        SetLastError("[AudioImporter] Failed to play sound: " + source.string());
     }
     else
     {
-        std::cout << "[AudioImporter] Playing: " << path << "\n";
+        std::cout << "[AudioImporter] Playing: " << NormalizeProjectRelativePath(source) << "\n";
     }
+}
+
+bool AssetImporter::EnsureAudioEngine()
+{
+    InitAudio();
+    return gAudioInitialized;
+}
+
+ma_engine* AssetImporter::GetAudioEngine()
+{
+    return gAudioInitialized ? &gAudioEngine : nullptr;
+}
+
+const std::string& AssetImporter::GetLastError()
+{
+    return gLastError;
+}
+
+void AssetImporter::ClearLastError()
+{
+    gLastError.clear();
 }
 
 void AssetImporter::Shutdown()

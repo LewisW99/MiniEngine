@@ -6,5 +6,10 @@ enum class ScriptTemplate
 	PlayerMovement,
 	CameraFollow,
 	SimpleAI,
-	Rotator
+	Rotator,
+	BasicMover,
+	TriggerInteractable,
+	AudioTrigger,
+	LightPulse,
+	SimplePickup
 };

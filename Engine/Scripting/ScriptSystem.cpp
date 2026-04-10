@@ -2,12 +2,23 @@
 #include "ScriptSystem.h"
 #include "ScriptComponent.h"
 #include "../../Demo/Editor/Managers/ProjectManager.h"
+#include "../ECS/EntityManager.h"
 #include "../TransformSystem.h"
 #include "../EditorConsole.h"
+#include <fstream>
 #include <iostream>
 #include <optional>
+#include <sstream>
 #include "../InputSystem.h"
+#include "../Components/ColliderComponent.h"
+#include "../Components/LightComponent.h"
+#include "../Components/MaterialComponent.h"
+#include "../Components/MeshComponent.h"
 #include "../Components/Physics/PhysicsComponent.h"
+#include "../Components/PlayerControllerComponent.h"
+#include "../Components/CameraFollowComponent.h"
+#include "../Components/AudioSourceComponent.h"
+#include "../Systems/AudioSystem.h"
 
 
 
@@ -27,6 +38,11 @@ static ScriptSystem* s_Instance = nullptr;
 static ScriptSystem* g_ScriptSystem = nullptr;
 
 static int Lua_Translate(lua_State* L);
+static int Lua_GetPosition(lua_State* L);
+static int Lua_SetPosition(lua_State* L);
+static int Lua_GetRotation(lua_State* L);
+static int Lua_SetRotation(lua_State* L);
+static int Lua_Rotate(lua_State* L);
 
 // Input Lua API
 static int Lua_InputMoveForward(lua_State* L);
@@ -38,6 +54,33 @@ static int Lua_InputToggleCameraPressed(lua_State* L);
 static int Lua_PhysicsSetVelocity(lua_State* L);
 static int Lua_PhysicsAddImpulse(lua_State* L);
 static int Lua_PhysicsIsGrounded(lua_State* L);
+static int Lua_PhysicsSetEnabled(lua_State* L);
+static int Lua_PhysicsIsEnabled(lua_State* L);
+
+static int Lua_EntityDestroy(lua_State* L);
+static int Lua_EntityHasComponent(lua_State* L);
+static int Lua_EntitySpawn(lua_State* L);
+
+static int Lua_MaterialGetAlbedo(lua_State* L);
+static int Lua_MaterialSetAlbedo(lua_State* L);
+static int Lua_MaterialGetSpecular(lua_State* L);
+static int Lua_MaterialSetSpecular(lua_State* L);
+static int Lua_MaterialGetShininess(lua_State* L);
+static int Lua_MaterialSetShininess(lua_State* L);
+static int Lua_MaterialGetTexture(lua_State* L);
+static int Lua_MaterialSetTexture(lua_State* L);
+static int Lua_MaterialUseTexture(lua_State* L);
+static int Lua_MaterialSetUseTexture(lua_State* L);
+
+static int Lua_LightGetDirection(lua_State* L);
+static int Lua_LightSetDirection(lua_State* L);
+static int Lua_LightGetColor(lua_State* L);
+static int Lua_LightSetColor(lua_State* L);
+static int Lua_LightGetIntensity(lua_State* L);
+static int Lua_LightSetIntensity(lua_State* L);
+static int Lua_AudioPlay(lua_State* L);
+static int Lua_AudioStop(lua_State* L);
+static int Lua_AudioPlayOneShot(lua_State* L);
 
 static PhysicsComponent* GetPhysics(Entity e)
 {
@@ -47,6 +90,149 @@ static PhysicsComponent* GetPhysics(Entity e)
         return nullptr;
 
     return &comps->GetComponent<PhysicsComponent>(e);
+}
+
+static LuaEntity* GetLuaEntity(lua_State* L, const int index)
+{
+    return static_cast<LuaEntity*>(lua_touserdata(L, index));
+}
+
+static bool IsEntityValid(const Entity entity)
+{
+    auto* entities = ScriptSystem::Get().GetEntities();
+    return entities != nullptr && entities->IsAlive(entity);
+}
+
+static TransformComponent* GetTransform(Entity e)
+{
+    auto* comps = ScriptSystem::Get().GetComponents();
+    if (comps == nullptr || !comps->HasComponent<TransformComponent>(e))
+    {
+        return nullptr;
+    }
+
+    return &comps->GetComponent<TransformComponent>(e);
+}
+
+static MaterialComponent* GetMaterial(Entity e)
+{
+    auto* comps = ScriptSystem::Get().GetComponents();
+    if (comps == nullptr || !comps->HasComponent<MaterialComponent>(e))
+    {
+        return nullptr;
+    }
+
+    return &comps->GetComponent<MaterialComponent>(e);
+}
+
+static LightComponent* GetLight(Entity e)
+{
+    auto* comps = ScriptSystem::Get().GetComponents();
+    if (comps == nullptr || !comps->HasComponent<LightComponent>(e))
+    {
+        return nullptr;
+    }
+
+    return &comps->GetComponent<LightComponent>(e);
+}
+
+static AudioSourceComponent* GetAudioSource(Entity e)
+{
+    auto* comps = ScriptSystem::Get().GetComponents();
+    if (comps == nullptr || !comps->HasComponent<AudioSourceComponent>(e))
+    {
+        return nullptr;
+    }
+
+    return &comps->GetComponent<AudioSourceComponent>(e);
+}
+
+static Entity GetEntityArg(lua_State* L, const int index, bool* valid = nullptr)
+{
+    const LuaEntity* luaEntity = GetLuaEntity(L, index);
+    const Entity entity = luaEntity != nullptr ? luaEntity->entity : Entity{};
+    const bool isValid = luaEntity != nullptr && IsEntityValid(entity);
+
+    if (valid != nullptr)
+    {
+        *valid = isValid;
+    }
+
+    return entity;
+}
+
+static void PushEntity(lua_State* L, const Entity entity)
+{
+    auto* luaEntity = static_cast<LuaEntity*>(lua_newuserdata(L, sizeof(LuaEntity)));
+    luaEntity->entity = entity;
+}
+
+static void PushVec3(lua_State* L, const float x, const float y, const float z)
+{
+    lua_pushnumber(L, x);
+    lua_pushnumber(L, y);
+    lua_pushnumber(L, z);
+}
+
+template<typename T>
+static void RemoveComponentIfPresent(ComponentManager& components, const Entity entity)
+{
+    if (components.HasComponent<T>(entity))
+    {
+        components.RemoveComponent<T>(entity);
+    }
+}
+
+static void DestroyKnownComponents(ComponentManager& components, const Entity entity)
+{
+    RemoveComponentIfPresent<TransformComponent>(components, entity);
+    RemoveComponentIfPresent<MeshComponent>(components, entity);
+    RemoveComponentIfPresent<MaterialComponent>(components, entity);
+    RemoveComponentIfPresent<LightComponent>(components, entity);
+    RemoveComponentIfPresent<PhysicsComponent>(components, entity);
+    RemoveComponentIfPresent<ColliderComponent>(components, entity);
+    RemoveComponentIfPresent<ScriptComponent>(components, entity);
+    RemoveComponentIfPresent<AudioSourceComponent>(components, entity);
+    RemoveComponentIfPresent<PlayerControllerComponent>(components, entity);
+    RemoveComponentIfPresent<CameraFollowComponent>(components, entity);
+}
+
+static bool HasNamedComponent(ComponentManager& components, const Entity entity, const std::string& name)
+{
+    if (name == "TransformComponent" || name == "Transform")
+    {
+        return components.HasComponent<TransformComponent>(entity);
+    }
+    if (name == "MeshComponent" || name == "Mesh")
+    {
+        return components.HasComponent<MeshComponent>(entity);
+    }
+    if (name == "MaterialComponent" || name == "Material")
+    {
+        return components.HasComponent<MaterialComponent>(entity);
+    }
+    if (name == "LightComponent" || name == "Light")
+    {
+        return components.HasComponent<LightComponent>(entity);
+    }
+    if (name == "PhysicsComponent" || name == "Physics")
+    {
+        return components.HasComponent<PhysicsComponent>(entity);
+    }
+    if (name == "ColliderComponent" || name == "Collider")
+    {
+        return components.HasComponent<ColliderComponent>(entity);
+    }
+    if (name == "ScriptComponent" || name == "Script")
+    {
+        return components.HasComponent<ScriptComponent>(entity);
+    }
+    if (name == "AudioSourceComponent" || name == "AudioSource" || name == "Audio")
+    {
+        return components.HasComponent<AudioSourceComponent>(entity);
+    }
+
+    return false;
 }
 
 static int Lua_Print(lua_State* L)
@@ -223,17 +409,28 @@ ScriptSystem& ScriptSystem::Get()
     return *s_Instance;
 }
 
-void ScriptSystem::Init(ComponentManager* cm)
+void ScriptSystem::Init(ComponentManager* cm, EntityManager* em)
 {
     s_Instance = this;
 	g_ScriptSystem = this;
     components = cm;
+    entityManager = em;
 
     m_L = luaL_newstate();
     luaL_openlibs(m_L);
 
     // ---------------- Transform API ----------------
     lua_newtable(m_L);
+    lua_pushcfunction(m_L, Lua_GetPosition);
+    lua_setfield(m_L, -2, "GetPosition");
+    lua_pushcfunction(m_L, Lua_SetPosition);
+    lua_setfield(m_L, -2, "SetPosition");
+    lua_pushcfunction(m_L, Lua_GetRotation);
+    lua_setfield(m_L, -2, "GetRotation");
+    lua_pushcfunction(m_L, Lua_SetRotation);
+    lua_setfield(m_L, -2, "SetRotation");
+    lua_pushcfunction(m_L, Lua_Rotate);
+    lua_setfield(m_L, -2, "Rotate");
     lua_pushcfunction(m_L, Lua_Translate);
     lua_setfield(m_L, -2, "Translate");
     lua_setglobal(m_L, "Transform");
@@ -283,9 +480,68 @@ void ScriptSystem::Init(ComponentManager* cm)
 
     lua_pushcfunction(m_L, Lua_PhysicsIsGrounded);
     lua_setfield(m_L, -2, "IsGrounded");
+    lua_pushcfunction(m_L, Lua_PhysicsSetEnabled);
+    lua_setfield(m_L, -2, "SetEnabled");
+    lua_pushcfunction(m_L, Lua_PhysicsIsEnabled);
+    lua_setfield(m_L, -2, "IsEnabled");
 
     lua_setglobal(m_L, "Physics");
-    //lua_pop(m_L, 1);
+
+    lua_newtable(m_L);
+    lua_pushcfunction(m_L, Lua_EntityDestroy);
+    lua_setfield(m_L, -2, "Destroy");
+    lua_pushcfunction(m_L, Lua_EntityHasComponent);
+    lua_setfield(m_L, -2, "HasComponent");
+    lua_pushcfunction(m_L, Lua_EntitySpawn);
+    lua_setfield(m_L, -2, "Spawn");
+    lua_setglobal(m_L, "Entity");
+
+    lua_newtable(m_L);
+    lua_pushcfunction(m_L, Lua_MaterialGetAlbedo);
+    lua_setfield(m_L, -2, "GetAlbedo");
+    lua_pushcfunction(m_L, Lua_MaterialSetAlbedo);
+    lua_setfield(m_L, -2, "SetAlbedo");
+    lua_pushcfunction(m_L, Lua_MaterialGetSpecular);
+    lua_setfield(m_L, -2, "GetSpecular");
+    lua_pushcfunction(m_L, Lua_MaterialSetSpecular);
+    lua_setfield(m_L, -2, "SetSpecular");
+    lua_pushcfunction(m_L, Lua_MaterialGetShininess);
+    lua_setfield(m_L, -2, "GetShininess");
+    lua_pushcfunction(m_L, Lua_MaterialSetShininess);
+    lua_setfield(m_L, -2, "SetShininess");
+    lua_pushcfunction(m_L, Lua_MaterialGetTexture);
+    lua_setfield(m_L, -2, "GetTexture");
+    lua_pushcfunction(m_L, Lua_MaterialSetTexture);
+    lua_setfield(m_L, -2, "SetTexture");
+    lua_pushcfunction(m_L, Lua_MaterialUseTexture);
+    lua_setfield(m_L, -2, "UseTexture");
+    lua_pushcfunction(m_L, Lua_MaterialSetUseTexture);
+    lua_setfield(m_L, -2, "SetUseTexture");
+    lua_setglobal(m_L, "Material");
+
+    lua_newtable(m_L);
+    lua_pushcfunction(m_L, Lua_LightGetDirection);
+    lua_setfield(m_L, -2, "GetDirection");
+    lua_pushcfunction(m_L, Lua_LightSetDirection);
+    lua_setfield(m_L, -2, "SetDirection");
+    lua_pushcfunction(m_L, Lua_LightGetColor);
+    lua_setfield(m_L, -2, "GetColor");
+    lua_pushcfunction(m_L, Lua_LightSetColor);
+    lua_setfield(m_L, -2, "SetColor");
+    lua_pushcfunction(m_L, Lua_LightGetIntensity);
+    lua_setfield(m_L, -2, "GetIntensity");
+    lua_pushcfunction(m_L, Lua_LightSetIntensity);
+    lua_setfield(m_L, -2, "SetIntensity");
+    lua_setglobal(m_L, "Light");
+
+    lua_newtable(m_L);
+    lua_pushcfunction(m_L, Lua_AudioPlay);
+    lua_setfield(m_L, -2, "Play");
+    lua_pushcfunction(m_L, Lua_AudioStop);
+    lua_setfield(m_L, -2, "Stop");
+    lua_pushcfunction(m_L, Lua_AudioPlayOneShot);
+    lua_setfield(m_L, -2, "PlayOneShot");
+    lua_setglobal(m_L, "Audio");
 }
 
 void ScriptSystem::Shutdown()
@@ -336,6 +592,8 @@ void ScriptSystem::LoadScript(ScriptComponent& script)
     {
         const char* err = lua_tostring(m_L, -1);
         std::string errStr = err ? err : "[Lua] Unknown script error";
+        m_LastReloadSucceeded = false;
+        m_LastReloadMessage = "[Lua] Failed to load script: " + script.ScriptPath;
 
         if (auto parsed = ParseLuaError(errStr, script.ScriptPath, false))
         {
@@ -360,6 +618,9 @@ void ScriptSystem::LoadScript(ScriptComponent& script)
     script.OnUpdate = GetFunctionRef("OnUpdate");
     script.OnDestroy = GetFunctionRef("OnDestroy");
     script.Started = false;
+    m_LastWriteTimes[script.ScriptPath] = std::filesystem::last_write_time(fullPath);
+    m_LastReloadSucceeded = true;
+    m_LastReloadMessage = "[Lua] Loaded script: " + script.ScriptPath;
 
     EditorConsole::Log(
         "[Lua] Loaded script: " + script.ScriptPath);
@@ -424,6 +685,73 @@ void ScriptSystem::Update(Entity entity, ScriptComponent& script, float dt)
     CallFunction(script.OnUpdate, entity, dt);
 }
 
+void ScriptSystem::AutoReloadModifiedScripts(const EntityManager& entities, ComponentManager& components)
+{
+    if (!ProjectManager::HasActiveProject())
+    {
+        return;
+    }
+
+    const auto& project = ProjectManager::GetActive();
+    for (EntityID id = 0; id < entities.GetMaxEntities(); ++id)
+    {
+        const Entity entity{ id };
+        if (!entities.IsAlive(entity) || !components.HasComponent<ScriptComponent>(entity))
+        {
+            continue;
+        }
+
+        auto& script = components.GetComponent<ScriptComponent>(entity);
+        if (script.ScriptPath.empty())
+        {
+            continue;
+        }
+
+        const std::filesystem::path fullPath = project.rootPath / script.ScriptPath;
+        if (!std::filesystem::exists(fullPath))
+        {
+            continue;
+        }
+
+        const auto writeTime = std::filesystem::last_write_time(fullPath);
+        const auto existing = m_LastWriteTimes.find(script.ScriptPath);
+        if (existing != m_LastWriteTimes.end() && existing->second >= writeTime)
+        {
+            continue;
+        }
+
+        std::ifstream file(fullPath);
+        std::stringstream buffer;
+        buffer << file.rdbuf();
+
+        std::string error;
+        if (!ValidateScriptText(buffer.str(), error))
+        {
+            m_LastReloadSucceeded = false;
+            m_LastReloadMessage = "[Lua] Auto-reload failed for " + script.ScriptPath;
+            if (auto parsed = ParseLuaError(error, script.ScriptPath, false))
+            {
+                EditorConsole::Error(
+                    "[Lua] Auto-reload failed for " + script.ScriptPath + ": " + parsed->message,
+                    parsed->scriptPath,
+                    parsed->line);
+                m_Errors.push_back(*parsed);
+            }
+            else
+            {
+                EditorConsole::Error("[Lua] Auto-reload failed for " + script.ScriptPath + ": " + error);
+            }
+            m_LastWriteTimes[script.ScriptPath] = writeTime;
+            continue;
+        }
+
+        LoadScript(script);
+        m_LastReloadSucceeded = true;
+        m_LastReloadMessage = "[Lua] Auto-reloaded script: " + script.ScriptPath;
+        EditorConsole::Log(m_LastReloadMessage);
+    }
+}
+
 bool ScriptSystem::ValidateScriptText(
     const std::string& text,
     std::string& outError)
@@ -445,28 +773,114 @@ bool ScriptSystem::ValidateScriptText(
     return true;
 }
 
+static int Lua_GetPosition(lua_State* L)
+{
+    bool valid = false;
+    const Entity entity = GetEntityArg(L, 1, &valid);
+    if (!valid)
+    {
+        return 0;
+    }
+
+    if (const TransformComponent* transform = GetTransform(entity))
+    {
+        PushVec3(L, transform->position.x, transform->position.y, transform->position.z);
+        return 3;
+    }
+
+    return 0;
+}
+
+static int Lua_SetPosition(lua_State* L)
+{
+    bool valid = false;
+    const Entity entity = GetEntityArg(L, 1, &valid);
+    if (!valid)
+    {
+        return 0;
+    }
+
+    if (TransformComponent* transform = GetTransform(entity))
+    {
+        transform->position.x = static_cast<float>(luaL_optnumber(L, 2, transform->position.x));
+        transform->position.y = static_cast<float>(luaL_optnumber(L, 3, transform->position.y));
+        transform->position.z = static_cast<float>(luaL_optnumber(L, 4, transform->position.z));
+    }
+
+    return 0;
+}
+
+static int Lua_GetRotation(lua_State* L)
+{
+    bool valid = false;
+    const Entity entity = GetEntityArg(L, 1, &valid);
+    if (!valid)
+    {
+        return 0;
+    }
+
+    if (const TransformComponent* transform = GetTransform(entity))
+    {
+        PushVec3(L, transform->rotation.x, transform->rotation.y, transform->rotation.z);
+        return 3;
+    }
+
+    return 0;
+}
+
+static int Lua_SetRotation(lua_State* L)
+{
+    bool valid = false;
+    const Entity entity = GetEntityArg(L, 1, &valid);
+    if (!valid)
+    {
+        return 0;
+    }
+
+    if (TransformComponent* transform = GetTransform(entity))
+    {
+        transform->rotation.x = static_cast<float>(luaL_optnumber(L, 2, transform->rotation.x));
+        transform->rotation.y = static_cast<float>(luaL_optnumber(L, 3, transform->rotation.y));
+        transform->rotation.z = static_cast<float>(luaL_optnumber(L, 4, transform->rotation.z));
+    }
+
+    return 0;
+}
+
 static int Lua_Translate(lua_State* L)
 {
-    // arg 1 = self
-    LuaEntity* le = (LuaEntity*)lua_touserdata(L, 1);
-    if (!le) return 0;
-
-    float x = (float)luaL_checknumber(L, 2);
-    float y = (float)luaL_checknumber(L, 3);
-    float z = (float)luaL_checknumber(L, 4);
-
-    Entity e = le->entity;
-
-    // Access TransformComponent directly
-    if (!ScriptSystem::Get().GetComponents()->HasComponent<TransformComponent>(e))
+    bool valid = false;
+    const Entity entity = GetEntityArg(L, 1, &valid);
+    if (!valid)
+    {
         return 0;
+    }
 
-    auto& t =
-        ScriptSystem::Get().GetComponents()->GetComponent<TransformComponent>(e);
+    if (TransformComponent* transform = GetTransform(entity))
+    {
+        transform->position.x += static_cast<float>(luaL_optnumber(L, 2, 0.0));
+        transform->position.y += static_cast<float>(luaL_optnumber(L, 3, 0.0));
+        transform->position.z += static_cast<float>(luaL_optnumber(L, 4, 0.0));
+    }
 
-    t.position.x += x;
-    t.position.y += y;
-    t.position.z += z;
+    return 0;
+}
+
+static int Lua_Rotate(lua_State* L)
+{
+    bool valid = false;
+    const Entity entity = GetEntityArg(L, 1, &valid);
+    if (!valid)
+    {
+        return 0;
+    }
+
+    if (TransformComponent* transform = GetTransform(entity))
+    {
+        transform->rotation.x += static_cast<float>(luaL_optnumber(L, 2, 0.0));
+        transform->rotation.y += static_cast<float>(luaL_optnumber(L, 3, 0.0));
+        transform->rotation.z += static_cast<float>(luaL_optnumber(L, 4, 0.0));
+    }
 
     return 0;
 }
@@ -520,10 +934,408 @@ static int Lua_PhysicsIsGrounded(lua_State* L)
     return 1;
 }
 
+static int Lua_PhysicsSetEnabled(lua_State* L)
+{
+    bool valid = false;
+    const Entity entity = GetEntityArg(L, 1, &valid);
+    if (!valid)
+    {
+        return 0;
+    }
+
+    if (auto* physics = GetPhysics(entity))
+    {
+        physics->enabled = lua_toboolean(L, 2) != 0;
+    }
+
+    return 0;
+}
+
+static int Lua_PhysicsIsEnabled(lua_State* L)
+{
+    bool valid = false;
+    const Entity entity = GetEntityArg(L, 1, &valid);
+    if (!valid)
+    {
+        lua_pushboolean(L, false);
+        return 1;
+    }
+
+    if (const auto* physics = GetPhysics(entity))
+    {
+        lua_pushboolean(L, physics->enabled);
+        return 1;
+    }
+
+    lua_pushboolean(L, false);
+    return 1;
+}
+
+static int Lua_EntityDestroy(lua_State* L)
+{
+    bool valid = false;
+    const Entity entity = GetEntityArg(L, 1, &valid);
+    if (!valid)
+    {
+        return 0;
+    }
+
+    auto& scriptSystem = ScriptSystem::Get();
+    if (auto* components = scriptSystem.GetComponents())
+    {
+        DestroyKnownComponents(*components, entity);
+    }
+    if (auto* entities = scriptSystem.GetEntities())
+    {
+        entities->DestroyEntity(entity);
+    }
+
+    return 0;
+}
+
+static int Lua_EntityHasComponent(lua_State* L)
+{
+    bool valid = false;
+    const Entity entity = GetEntityArg(L, 1, &valid);
+    const char* componentName = luaL_optstring(L, 2, "");
+    if (!valid || componentName == nullptr)
+    {
+        lua_pushboolean(L, false);
+        return 1;
+    }
+
+    auto* components = ScriptSystem::Get().GetComponents();
+    lua_pushboolean(L, components != nullptr && HasNamedComponent(*components, entity, componentName));
+    return 1;
+}
+
+static int Lua_EntitySpawn(lua_State* L)
+{
+    auto& scriptSystem = ScriptSystem::Get();
+    auto* entities = scriptSystem.GetEntities();
+    auto* components = scriptSystem.GetComponents();
+    if (entities == nullptr || components == nullptr)
+    {
+        return 0;
+    }
+
+    const Entity entity = entities->CreateEntity();
+    if (!components->HasComponent<TransformComponent>(entity))
+    {
+        components->AddComponent(entity, TransformComponent{});
+    }
+
+    PushEntity(L, entity);
+    return 1;
+}
+
+static int Lua_MaterialGetAlbedo(lua_State* L)
+{
+    bool valid = false;
+    const Entity entity = GetEntityArg(L, 1, &valid);
+    if (!valid)
+    {
+        return 0;
+    }
+
+    if (const auto* material = GetMaterial(entity))
+    {
+        PushVec3(L, material->albedo.x, material->albedo.y, material->albedo.z);
+        return 3;
+    }
+
+    return 0;
+}
+
+static int Lua_MaterialSetAlbedo(lua_State* L)
+{
+    bool valid = false;
+    const Entity entity = GetEntityArg(L, 1, &valid);
+    if (!valid)
+    {
+        return 0;
+    }
+
+    if (auto* material = GetMaterial(entity))
+    {
+        material->albedo.x = static_cast<float>(luaL_optnumber(L, 2, material->albedo.x));
+        material->albedo.y = static_cast<float>(luaL_optnumber(L, 3, material->albedo.y));
+        material->albedo.z = static_cast<float>(luaL_optnumber(L, 4, material->albedo.z));
+    }
+
+    return 0;
+}
+
+static int Lua_MaterialGetSpecular(lua_State* L)
+{
+    bool valid = false;
+    const Entity entity = GetEntityArg(L, 1, &valid);
+    const auto* material = valid ? GetMaterial(entity) : nullptr;
+    lua_pushnumber(L, material != nullptr ? material->specular : 0.0f);
+    return 1;
+}
+
+static int Lua_MaterialSetSpecular(lua_State* L)
+{
+    bool valid = false;
+    const Entity entity = GetEntityArg(L, 1, &valid);
+    if (!valid)
+    {
+        return 0;
+    }
+
+    if (auto* material = GetMaterial(entity))
+    {
+        material->specular = static_cast<float>(luaL_optnumber(L, 2, material->specular));
+    }
+
+    return 0;
+}
+
+static int Lua_MaterialGetShininess(lua_State* L)
+{
+    bool valid = false;
+    const Entity entity = GetEntityArg(L, 1, &valid);
+    const auto* material = valid ? GetMaterial(entity) : nullptr;
+    lua_pushnumber(L, material != nullptr ? material->shininess : 0.0f);
+    return 1;
+}
+
+static int Lua_MaterialSetShininess(lua_State* L)
+{
+    bool valid = false;
+    const Entity entity = GetEntityArg(L, 1, &valid);
+    if (!valid)
+    {
+        return 0;
+    }
+
+    if (auto* material = GetMaterial(entity))
+    {
+        material->shininess = static_cast<float>(luaL_optnumber(L, 2, material->shininess));
+    }
+
+    return 0;
+}
+
+static int Lua_MaterialGetTexture(lua_State* L)
+{
+    bool valid = false;
+    const Entity entity = GetEntityArg(L, 1, &valid);
+    const auto* material = valid ? GetMaterial(entity) : nullptr;
+    lua_pushstring(L, material != nullptr ? material->albedoTexture.c_str() : "");
+    return 1;
+}
+
+static int Lua_MaterialSetTexture(lua_State* L)
+{
+    bool valid = false;
+    const Entity entity = GetEntityArg(L, 1, &valid);
+    if (!valid)
+    {
+        return 0;
+    }
+
+    if (auto* material = GetMaterial(entity))
+    {
+        const char* path = luaL_optstring(L, 2, material->albedoTexture.c_str());
+        material->albedoTexture = path != nullptr ? path : "";
+        material->useTexture = !material->albedoTexture.empty();
+    }
+
+    return 0;
+}
+
+static int Lua_MaterialUseTexture(lua_State* L)
+{
+    bool valid = false;
+    const Entity entity = GetEntityArg(L, 1, &valid);
+    const auto* material = valid ? GetMaterial(entity) : nullptr;
+    lua_pushboolean(L, material != nullptr && material->useTexture);
+    return 1;
+}
+
+static int Lua_MaterialSetUseTexture(lua_State* L)
+{
+    bool valid = false;
+    const Entity entity = GetEntityArg(L, 1, &valid);
+    if (!valid)
+    {
+        return 0;
+    }
+
+    if (auto* material = GetMaterial(entity))
+    {
+        material->useTexture = lua_toboolean(L, 2) != 0;
+    }
+
+    return 0;
+}
+
+static int Lua_LightGetDirection(lua_State* L)
+{
+    bool valid = false;
+    const Entity entity = GetEntityArg(L, 1, &valid);
+    if (!valid)
+    {
+        return 0;
+    }
+
+    if (const auto* light = GetLight(entity))
+    {
+        PushVec3(L, light->direction.x, light->direction.y, light->direction.z);
+        return 3;
+    }
+
+    return 0;
+}
+
+static int Lua_LightSetDirection(lua_State* L)
+{
+    bool valid = false;
+    const Entity entity = GetEntityArg(L, 1, &valid);
+    if (!valid)
+    {
+        return 0;
+    }
+
+    if (auto* light = GetLight(entity))
+    {
+        light->direction.x = static_cast<float>(luaL_optnumber(L, 2, light->direction.x));
+        light->direction.y = static_cast<float>(luaL_optnumber(L, 3, light->direction.y));
+        light->direction.z = static_cast<float>(luaL_optnumber(L, 4, light->direction.z));
+    }
+
+    return 0;
+}
+
+static int Lua_LightGetColor(lua_State* L)
+{
+    bool valid = false;
+    const Entity entity = GetEntityArg(L, 1, &valid);
+    if (!valid)
+    {
+        return 0;
+    }
+
+    if (const auto* light = GetLight(entity))
+    {
+        PushVec3(L, light->color.x, light->color.y, light->color.z);
+        return 3;
+    }
+
+    return 0;
+}
+
+static int Lua_LightSetColor(lua_State* L)
+{
+    bool valid = false;
+    const Entity entity = GetEntityArg(L, 1, &valid);
+    if (!valid)
+    {
+        return 0;
+    }
+
+    if (auto* light = GetLight(entity))
+    {
+        light->color.x = static_cast<float>(luaL_optnumber(L, 2, light->color.x));
+        light->color.y = static_cast<float>(luaL_optnumber(L, 3, light->color.y));
+        light->color.z = static_cast<float>(luaL_optnumber(L, 4, light->color.z));
+    }
+
+    return 0;
+}
+
+static int Lua_LightGetIntensity(lua_State* L)
+{
+    bool valid = false;
+    const Entity entity = GetEntityArg(L, 1, &valid);
+    const auto* light = valid ? GetLight(entity) : nullptr;
+    lua_pushnumber(L, light != nullptr ? light->intensity : 0.0f);
+    return 1;
+}
+
+static int Lua_LightSetIntensity(lua_State* L)
+{
+    bool valid = false;
+    const Entity entity = GetEntityArg(L, 1, &valid);
+    if (!valid)
+    {
+        return 0;
+    }
+
+    if (auto* light = GetLight(entity))
+    {
+        light->intensity = static_cast<float>(luaL_optnumber(L, 2, light->intensity));
+    }
+
+    return 0;
+}
+
+static int Lua_AudioPlay(lua_State* L)
+{
+    bool valid = false;
+    const Entity entity = GetEntityArg(L, 1, &valid);
+    auto& scriptSystem = ScriptSystem::Get();
+    if (!valid || scriptSystem.GetAudioSystem() == nullptr)
+    {
+        return 0;
+    }
+
+    if (auto* source = GetAudioSource(entity))
+    {
+        scriptSystem.GetAudioSystem()->Play(entity, *source);
+        source->started = true;
+    }
+
+    return 0;
+}
+
+static int Lua_AudioStop(lua_State* L)
+{
+    bool valid = false;
+    const Entity entity = GetEntityArg(L, 1, &valid);
+    auto& scriptSystem = ScriptSystem::Get();
+    if (!valid || scriptSystem.GetAudioSystem() == nullptr)
+    {
+        return 0;
+    }
+
+    scriptSystem.GetAudioSystem()->Stop(entity);
+    if (auto* source = GetAudioSource(entity))
+    {
+        source->playing = false;
+    }
+
+    return 0;
+}
+
+static int Lua_AudioPlayOneShot(lua_State* L)
+{
+    auto& scriptSystem = ScriptSystem::Get();
+    if (scriptSystem.GetAudioSystem() == nullptr)
+    {
+        return 0;
+    }
+
+    const char* path = luaL_optstring(L, 1, "");
+    if (path != nullptr && path[0] != '\0')
+    {
+        scriptSystem.GetAudioSystem()->PlayOneShot(path);
+    }
+
+    return 0;
+}
+
 
 void ScriptSystem::SetInputSystem(InputSystem* input)
 {
     m_InputSystem = input;
+}
+
+void ScriptSystem::SetAudioSystem(AudioSystem* audioSystem)
+{
+    m_AudioSystem = audioSystem;
 }
 
 

@@ -26,8 +26,13 @@ class AssetImporter
 {
 public:
     static MeshData ImportModel(const std::string& path);
+    static bool ImportModelAsset(const std::string& path);
     static ImportedTexture LoadTextureData(const std::string& path, bool flipVertically);
     static void ImportTexture(const std::string& path);
     static void ImportAudio(const std::string& path);
+    static bool EnsureAudioEngine();
+    static ma_engine* GetAudioEngine();
+    static const std::string& GetLastError();
+    static void ClearLastError();
     static void Shutdown();
 };

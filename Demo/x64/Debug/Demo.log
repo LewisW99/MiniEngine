@@ -3,6 +3,7 @@
   RecentProjects.cpp
   StartupScreen.cpp
   main.cpp
+  PrototypeBuilder.cpp
   ScriptAPI.cpp
   Generating Code...
   Demo.vcxproj -> C:\Users\Lewis\source\repos\MiniEngine\x64\Debug\Demo.exe

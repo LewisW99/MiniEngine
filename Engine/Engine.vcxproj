@@ -161,6 +161,7 @@
     <ClInclude Include="AssetDatabase\AssetImporter.h" />
     <ClInclude Include="AsyncLoader.h" />
     <ClInclude Include="Components\CameraFollowComponent.h" />
+    <ClInclude Include="Components\AudioSourceComponent.h" />
     <ClInclude Include="Components\ColliderComponent.h" />
     <ClInclude Include="Components\LightComponent.h" />
     <ClInclude Include="Components\MaterialComponent.h" />
@@ -206,6 +207,7 @@
     <ClInclude Include="Shader.h" />
     <ClInclude Include="Streaming\StreamingManager.h" />
     <ClInclude Include="Systems\CameraControllerSystem.h" />
+    <ClInclude Include="Systems\AudioSystem.h" />
     <ClInclude Include="Systems\PlayerControllerSystem.h" />
     <ClInclude Include="Systems\RenderSystem.h" />
     <ClInclude Include="ThreadPool.h" />
@@ -297,6 +299,7 @@
     </ClCompile>
     <ClCompile Include="Scripting\ScriptSystem.cpp" />
     <ClCompile Include="Shader.cpp" />
+    <ClCompile Include="Systems\AudioSystem.cpp" />
     <ClCompile Include="Systems\CameraControllerSystem.cpp" />
     <ClCompile Include="Systems\PlayerControllerSystem.cpp" />
     <ClCompile Include="Systems\RenderSystem.cpp" />
