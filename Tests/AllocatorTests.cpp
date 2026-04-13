@@ -13,6 +13,12 @@
 #include "../Engine/Core/Memory/StackAllocator.h"
 #include "../Engine/Core/Memory/PoolAllocator.h"
 #include "../Engine/ConfigReader.h"
+#include "../Engine/Components/RuntimeUIComponent.h"
+#include "../Engine/SceneSerializer.h"
+#include "../Engine/Scripting/ScriptComponent.h"
+#include "../Engine/ECS/ComponentManager.h"
+#include "../Engine/ECS/EntityManager.h"
+#include "../Engine/ECS/EntityMeta.h"
 #include "AllocatorTests.h"
 
 //void testAllocator()
@@ -241,6 +247,72 @@ void runAllocatorTest(Allocator* allocator) {
 
 int main()
 {
+    bool allPassed = true;
+
+    {
+        bool oldPatternReproduced = false;
+        try
+        {
+            ComponentManager oldComponents;
+            const Entity oldEntity{ 1 };
+            ScriptComponent oldScript;
+            oldScript.ScriptPath = "Assets/Scripts/MainMenu.lua";
+            oldComponents.AddComponent(oldEntity, oldScript);
+        }
+        catch (const std::out_of_range&)
+        {
+            oldPatternReproduced = true;
+            std::cout << "[PASS] Reproduced old unregistered ScriptComponent template crash path.\n";
+        }
+
+        if (!oldPatternReproduced)
+        {
+            std::cerr << "[FAIL] Expected old template crash path was not reproduced.\n";
+        }
+
+        EntityManager entities(8);
+        ComponentManager components;
+        EntityMeta meta;
+        SceneSerializer::RegisterSceneComponentTypes(components);
+
+        const Entity controller = entities.CreateEntity();
+        ScriptComponent script;
+        script.ScriptPath = "Assets/Scripts/MainMenu.lua";
+        components.AddComponent(controller, script);
+        meta.SetName(controller, "Controller");
+
+        const Entity button = entities.CreateEntity();
+        RuntimeUIComponent ui;
+        ui.type = RuntimeUIElementType::Button;
+        ui.luaFunction = "OnPlayButtonClicked";
+        ui.luaArgumentType = RuntimeUIArgumentType::Int;
+        ui.luaIntArgument = 1;
+        components.AddComponent(button, ui);
+        meta.SetName(button, "Play Button");
+
+        const std::filesystem::path testScene = std::filesystem::current_path() / "template_regression.scene";
+        bool regressionPassed = true;
+        try
+        {
+            SceneSerializer::Save(testScene.string(), entities, components, meta);
+        }
+        catch (const std::exception& ex)
+        {
+            regressionPassed = false;
+            std::cerr << "[FAIL] Main menu template regression: " << ex.what() << "\n";
+        }
+
+        std::error_code ec;
+        std::filesystem::remove(testScene, ec);
+
+        if (regressionPassed)
+        {
+            std::cout << "[PASS] Main menu template-style save no longer throws.\n";
+        }
+
+        allPassed = allPassed && oldPatternReproduced && regressionPassed;
+    }
+
     /*std::cout << "Mini Engine: Week 1 Started \n" << std::endl;
 
     testLinearAllocator();
@@ -263,8 +335,7 @@ int main()
 
     //delete allocator;
 
-    std::cin.get();
-    return 0;
+    return allPassed ? 0 : 1;
 }
 
 void InitConfig()

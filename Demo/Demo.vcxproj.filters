@@ -36,6 +36,9 @@
     <ClCompile Include="Scripting\ScriptAPI.cpp">
       <Filter>Scripting</Filter>
     </ClCompile>
+    <ClCompile Include="PrototypeBuilder.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Editor.h">
@@ -52,6 +55,9 @@
     </ClInclude>
     <ClInclude Include="Scripting\ScriptAPI.h">
       <Filter>Scripting</Filter>
+    </ClInclude>
+    <ClInclude Include="PrototypeBuilder.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

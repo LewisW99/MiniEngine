@@ -77,9 +77,11 @@
 #include "../Engine/Systems/NavigationSystem.h"
 #include "../Engine/Systems/UISystem.h"
 #include "../Engine/Components/ColliderComponent.h"
+#include "../Engine/Components/DialogueComponent.h"
 #include "../Engine/Components/LightComponent.h"
 #include "../Engine/Components/MaterialComponent.h"
 #include "../Engine/Components/MeshComponent.h"
+#include "../Engine/Components/TagComponent.h"
 #include "../Engine/AssetDatabase/AssetImporter.h"
 #include "../Engine/SceneSerializer.h"
 
@@ -215,6 +217,64 @@ namespace
         return options;
     }
 
+    void DrawRuntimeLogOverlay()
+    {
+        const auto& messages = EditorConsole::GetMessages();
+        if (messages.empty())
+        {
+            return;
+        }
+
+        const ImGuiViewport* viewport = ImGui::GetMainViewport();
+        ImGui::SetNextWindowPos(
+            ImVec2(viewport->WorkPos.x + 16.0f, viewport->WorkPos.y + viewport->WorkSize.y - 16.0f),
+            ImGuiCond_Always,
+            ImVec2(0.0f, 1.0f));
+        ImGui::SetNextWindowBgAlpha(0.72f);
+        ImGui::SetNextWindowSizeConstraints(ImVec2(360.0f, 80.0f), ImVec2(640.0f, 260.0f));
+
+        const ImGuiWindowFlags flags =
+            ImGuiWindowFlags_NoDecoration |
+            ImGuiWindowFlags_NoDocking |
+            ImGuiWindowFlags_AlwaysAutoResize |
+            ImGuiWindowFlags_NoSavedSettings |
+            ImGuiWindowFlags_NoFocusOnAppearing |
+            ImGuiWindowFlags_NoNav;
+
+        if (!ImGui::Begin("Runtime Log Overlay", nullptr, flags))
+        {
+            ImGui::End();
+            return;
+        }
+
+        ImGui::TextUnformatted("Runtime Log");
+        ImGui::Separator();
+
+        const std::size_t maxVisibleMessages = 6;
+        const std::size_t startIndex = messages.size() > maxVisibleMessages ? messages.size() - maxVisibleMessages : 0;
+        for (std::size_t index = startIndex; index < messages.size(); ++index)
+        {
+            const auto& message = messages[index];
+            ImVec4 color = ImVec4(0.85f, 0.85f, 0.85f, 1.0f);
+            if (message.level == LogLevel::Warning)
+            {
+                color = ImVec4(1.0f, 0.82f, 0.35f, 1.0f);
+            }
+            else if (message.level == LogLevel::Error)
+            {
+                color = ImVec4(1.0f, 0.45f, 0.40f, 1.0f);
+            }
+
+            ImGui::TextColored(color, "%s", message.text.c_str());
+            if (message.hasScriptLocation && !message.scriptPath.empty())
+            {
+                ImGui::TextDisabled("%s:%d", message.scriptPath.c_str(), message.line);
+            }
+        }
+
+        ImGui::End();
+    }
+
     std::filesystem::path ResolveStartupScene(const RuntimeOptions& options)
     {
         const auto& project = ProjectManager::GetActive();
@@ -317,7 +377,7 @@ int main(int argc, char** argv) {
             return -1;
         }
 
-        ProjectManager::Create(runtimeOptions.projectPath);
+        ProjectManager::Create(runtimeOptions.projectPath, ProjectCreateOptions{});
         std::cout << "[Project] Created project at " << runtimeOptions.projectPath << "\n";
         return 0;
     }
@@ -443,11 +503,13 @@ int main(int argc, char** argv) {
     components.RegisterComponent<MaterialComponent>("MaterialComponent");
     components.RegisterComponent<MeshComponent>("MeshComponent");
     components.RegisterComponent<LightComponent>("LightComponent");
+    components.RegisterComponent<TagComponent>("TagComponent");
     components.RegisterComponent<AnimationComponent>("AnimationComponent");
     components.RegisterComponent<AudioSourceComponent>("AudioSourceComponent");
     components.RegisterComponent<NavAgentComponent>("NavAgentComponent");
     components.RegisterComponent<NavWaypointComponent>("NavWaypointComponent");
     components.RegisterComponent<RuntimeUIComponent>("RuntimeUIComponent");
+    components.RegisterComponent<DialogueComponent>("DialogueComponent");
 
 	components.DumpRegisteredComponents();
 
@@ -485,6 +547,120 @@ int main(int argc, char** argv) {
 
     std::unique_ptr<Editor> editor;
     EntityMeta runtimeMeta;
+    std::optional<std::filesystem::path> pendingSceneLoad;
+
+    auto loadSceneIntoRuntime = [&](const std::filesystem::path& scenePath)
+        {
+            if (scenePath.empty() || !std::filesystem::exists(scenePath))
+            {
+                std::cerr << "[Runtime] Scene not found: " << scenePath << "\n";
+                return false;
+            }
+
+            entities.Clear();
+            components.Clear();
+            runtimeMeta.Clear();
+
+            SceneSerializer::Load(scenePath.string(), entities, components, runtimeMeta);
+            EventBus::Publish({ "SceneLoaded", 0, "Scene loaded", scenePath.string() });
+
+            for (EntityID id = 0; id < entities.GetMaxEntities(); ++id)
+            {
+                const Entity entity{ id };
+                if (!entities.IsAlive(entity) || !components.HasComponent<ScriptComponent>(entity))
+                {
+                    continue;
+                }
+
+                auto& script = components.GetComponent<ScriptComponent>(entity);
+                if (!script.ScriptPath.empty())
+                {
+                    scriptSystem.LoadScript(script);
+                }
+            }
+
+            std::cout << "[Runtime] Loaded scene: " << scenePath << "\n";
+            return true;
+        };
+
+    auto resolveSceneByBuildIndex = [&](const int buildIndex) -> std::optional<std::filesystem::path>
+        {
+            if (!ProjectManager::HasActiveProject())
+            {
+                return std::nullopt;
+            }
+
+            const auto& project = ProjectManager::GetActive();
+            for (const auto& buildScene : project.buildScenes)
+            {
+                if (!buildScene.included || buildScene.buildIndex != buildIndex)
+                {
+                    continue;
+                }
+
+                for (const auto& scene : project.scenes)
+                {
+                    if (scene.id == buildScene.sceneId)
+                    {
+                        return scene.path;
+                    }
+                }
+            }
+
+            return std::nullopt;
+        };
+
+    auto tryParseBuildIndex = [](const std::string& text, int& outValue) -> bool
+        {
+            if (text.empty())
+            {
+                return false;
+            }
+
+            char* end = nullptr;
+            const long parsedValue = std::strtol(text.c_str(), &end, 10);
+            if (end == text.c_str() || (end != nullptr && *end != '\0'))
+            {
+                return false;
+            }
+
+            outValue = static_cast<int>(parsedValue);
+            return true;
+        };
+
+    auto resolveSceneByName = [&](const std::string& sceneName) -> std::optional<std::filesystem::path>
+        {
+            if (!ProjectManager::HasActiveProject() || sceneName.empty())
+            {
+                return std::nullopt;
+            }
+
+            const auto& project = ProjectManager::GetActive();
+            for (const auto& scene : project.scenes)
+            {
+                if (_stricmp(scene.name.c_str(), sceneName.c_str()) == 0 ||
+                    _stricmp(scene.path.stem().string().c_str(), sceneName.c_str()) == 0)
+                {
+                    return scene.path;
+                }
+            }
+
+            return std::nullopt;
+        };
+
+    EventBus::Subscribe("LoadSceneByBuildIndex", [&](const EngineEvent& event)
+        {
+            int buildIndex = -1;
+            if (tryParseBuildIndex(event.payload, buildIndex))
+            {
+                pendingSceneLoad = resolveSceneByBuildIndex(buildIndex);
+            }
+        });
+
+    EventBus::Subscribe("LoadSceneByName", [&](const EngineEvent& event)
+        {
+            pendingSceneLoad = resolveSceneByName(event.payload);
+        });
 
     if (editorShellMode)
     {
@@ -535,9 +711,7 @@ int main(int argc, char** argv) {
             applyProjectSettings(ProjectManager::GetActive());
             inputSystem.LoadBindings((ProjectManager::GetActive().rootPath / "Config" / "input_bindings.json").string());
             const std::filesystem::path startupScene = ResolveStartupScene(runtimeOptions);
-            SceneSerializer::Load(startupScene.string(), entities, components, runtimeMeta);
-            EventBus::Publish({ "SceneLoaded", 0, "Scene loaded", startupScene.string() });
-            std::cout << "[Runtime] Loaded scene: " << startupScene << "\n";
+            loadSceneIntoRuntime(startupScene);
         }
     }
 
@@ -642,6 +816,29 @@ int main(int argc, char** argv) {
         const bool editorPlayMode =
             editor != nullptr && editor->GetEngineMode() == EngineMode::Play;
 
+        inputSystem.SetGameplayEnabled(gameplayActive);
+
+        const bool editorCameraActive =
+            !gameplayActive &&
+            !gameRuntimeMode &&
+            rightMouseHeld &&
+            appState == AppState::Editor;
+
+        if (editorCameraActive)
+        {
+            const Uint8* keyboardState = SDL_GetKeyboardState(nullptr);
+            camera.Update(
+                keyboardState[SDL_SCANCODE_W] != 0,
+                keyboardState[SDL_SCANCODE_S] != 0,
+                keyboardState[SDL_SCANCODE_A] != 0,
+                keyboardState[SDL_SCANCODE_D] != 0,
+                keyboardState[SDL_SCANCODE_E] != 0,
+                keyboardState[SDL_SCANCODE_Q] != 0,
+                inputSystem.GetMouseDX(),
+                inputSystem.GetMouseDY(),
+                dt);
+        }
+
         if (gameplayActive)
         {
             if (editorPlayMode)
@@ -699,6 +896,13 @@ int main(int argc, char** argv) {
             audioSystem.Update(entities, components);
         }
 
+        if (pendingSceneLoad.has_value())
+        {
+            const auto nextScene = *pendingSceneLoad;
+            pendingSceneLoad.reset();
+            loadSceneIntoRuntime(nextScene);
+        }
+
 
         // ECS + Streaming
         
@@ -721,6 +925,7 @@ int main(int argc, char** argv) {
             renderer.snapGridVisible = false;
             renderer.RenderToScreen(entities, components, camera, windowW, windowH);
             UISystem::Draw(entities, components, windowW, windowH);
+            DrawRuntimeLogOverlay();
             ImGui::Render();
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
             SDL_GL_SwapWindow(window);
@@ -747,7 +952,7 @@ int main(int argc, char** argv) {
                     }
                     else
                     {
-                        ProjectManager::Create(result.projectPath);
+                        ProjectManager::Create(result.projectPath, ProjectCreateOptions{ result.initialSceneName });
                         projectReady = true;
                     }
 
@@ -781,7 +986,7 @@ int main(int argc, char** argv) {
                 editor->Draw();
                 if (editorPlayMode)
                 {
-                    UISystem::Draw(entities, components, windowW, windowH);
+                    DrawRuntimeLogOverlay();
                 }
             }
 

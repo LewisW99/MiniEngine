@@ -6,6 +6,7 @@
 #include "Components/AudioSourceComponent.h"
 #include "Components/CameraFollowComponent.h"
 #include "Components/ColliderComponent.h"
+#include "Components/DialogueComponent.h"
 #include "Components/LightComponent.h"
 #include "Components/MaterialComponent.h"
 #include "Components/MeshComponent.h"
@@ -126,6 +127,23 @@ private:
             entry["script"] = { { "path", comps.GetComponent<ScriptComponent>(entity).ScriptPath } };
         }
 
+        if (comps.HasComponent<DialogueComponent>(entity))
+        {
+            const auto& dialogue = comps.GetComponent<DialogueComponent>(entity);
+            entry["dialogue"] = {
+                { "nextEntryId", dialogue.nextEntryId },
+                { "entries", prefab_json::array() }
+            };
+
+            for (const auto& dialogueEntry : dialogue.entries)
+            {
+                entry["dialogue"]["entries"].push_back({
+                    { "id", dialogueEntry.id },
+                    { "text", dialogueEntry.text }
+                });
+            }
+        }
+
         if (comps.HasComponent<ColliderComponent>(entity))
         {
             const auto& collider = comps.GetComponent<ColliderComponent>(entity);
@@ -222,6 +240,27 @@ private:
             ScriptComponent script;
             script.ScriptPath = entry["script"].value("path", "");
             comps.AddComponent(entity, script);
+        }
+
+        if (entry.contains("dialogue"))
+        {
+            DialogueComponent dialogue;
+            const auto& dialogueEntry = entry["dialogue"];
+            dialogue.nextEntryId = dialogueEntry.value("nextEntryId", dialogue.nextEntryId);
+
+            if (dialogueEntry.contains("entries"))
+            {
+                for (const auto& item : dialogueEntry["entries"])
+                {
+                    DialogueEntry value;
+                    value.id = item.value("id", value.id);
+                    value.text = item.value("text", std::string{});
+                    dialogue.entries.push_back(value);
+                    dialogue.nextEntryId = std::max(dialogue.nextEntryId, value.id + 1);
+                }
+            }
+
+            comps.AddComponent(entity, dialogue);
         }
 
         if (entry.contains("collider"))

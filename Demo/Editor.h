@@ -85,11 +85,13 @@ private:
     void DrawHierarchy();
     void DrawDetails();
     void DrawAssetsPanel();
+    void DrawImporterDiagnosticsPanel();
     void BeginDockSpace();
     void DrawCreateScriptPopup();
     void DrawConsoleWindow();
     void DrawScriptDocsPanel();
     void DrawProjectSettingsPanel();
+    bool DrawRuntimeUIOverlay(const ImVec2& sceneImageMin, const ImVec2& sceneImageMax, int viewportWidth, int viewportHeight);
     void SanitizeSelection();
 
     void FocusScriptEditor();
@@ -111,6 +113,7 @@ private:
     bool SaveSelectedAsPrefab();
     Entity CreateDirectionalLightEntity(const Vec3* spawnPosition = nullptr, bool selectEntity = true);
     void EnsureDefaultDirectionalLight();
+    bool PopulateSceneTemplate(const std::filesystem::path& scenePath, int templateIndex);
     Vec3 GetSpawnPositionInFrontOfCamera(float distance = 5.0f) const;
     bool TryGetSceneDropPosition(const ImVec2& imageMin, const ImVec2& imageMax, Vec3& outPosition) const;
 
@@ -135,6 +138,7 @@ private:
     int FindOrOpenScript(const std::string& path);
 
     bool showInputDebug = false;
+    bool showBuildSettingsPanel = false;
     bool assetsScanned = false;
     EditorGizmoState gizmoState{};
     std::filesystem::path defaultLightProjectFile;

@@ -1,0 +1,16 @@
+{
+  "build": {
+    "outputFolder": "C:/Users/Lewis/source/repos/MiniEnginePackageVerify/GameBuild",
+    "runtimeIdentifier": "FreshProject",
+    "startupScene": "C:/Users/Lewis/source/repos/MiniEngine/_DialogueSceneVerify/FreshProject/Scenes/Main.scene"
+  },
+  "input": {
+    "bindingsFile": "Config/input_bindings.json"
+  },
+  "runtime": {
+    "exposure": 1.0,
+    "gamma": 2.200000047683716,
+    "masterVolume": 1.0,
+    "vignette": true
+  }
+}

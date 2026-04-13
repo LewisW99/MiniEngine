@@ -7,11 +7,13 @@
 #include "Components/AnimationComponent.h"
 #include "Components/AudioSourceComponent.h"
 #include "Components/ColliderComponent.h"
+#include "Components/DialogueComponent.h"
 #include "Components/LightComponent.h"
 #include "Components/MaterialComponent.h"
 #include "Components/MeshComponent.h"
 #include "Components/NavAgentComponent.h"
 #include "Components/NavWaypointComponent.h"
+#include "Components/TagComponent.h"
 #include "Components/Physics/PhysicsComponent.h"
 #include "Components/PlayerControllerComponent.h"
 #include "Components/RuntimeUIComponent.h"
@@ -26,6 +28,26 @@ using json = nlohmann::json;
 class SceneSerializer
 {
 public:
+    static void RegisterSceneComponentTypes(ComponentManager& components)
+    {
+        if (!components.IsComponentRegistered<TransformComponent>()) components.RegisterComponent<TransformComponent>("TransformComponent");
+        if (!components.IsComponentRegistered<PhysicsComponent>()) components.RegisterComponent<PhysicsComponent>("PhysicsComponent");
+        if (!components.IsComponentRegistered<ScriptComponent>()) components.RegisterComponent<ScriptComponent>("ScriptComponent");
+        if (!components.IsComponentRegistered<PlayerControllerComponent>()) components.RegisterComponent<PlayerControllerComponent>("PlayerControllerComponent");
+        if (!components.IsComponentRegistered<CameraFollowComponent>()) components.RegisterComponent<CameraFollowComponent>("CameraFollowComponent");
+        if (!components.IsComponentRegistered<ColliderComponent>()) components.RegisterComponent<ColliderComponent>("ColliderComponent");
+        if (!components.IsComponentRegistered<MaterialComponent>()) components.RegisterComponent<MaterialComponent>("MaterialComponent");
+        if (!components.IsComponentRegistered<MeshComponent>()) components.RegisterComponent<MeshComponent>("MeshComponent");
+        if (!components.IsComponentRegistered<LightComponent>()) components.RegisterComponent<LightComponent>("LightComponent");
+        if (!components.IsComponentRegistered<TagComponent>()) components.RegisterComponent<TagComponent>("TagComponent");
+        if (!components.IsComponentRegistered<AnimationComponent>()) components.RegisterComponent<AnimationComponent>("AnimationComponent");
+        if (!components.IsComponentRegistered<AudioSourceComponent>()) components.RegisterComponent<AudioSourceComponent>("AudioSourceComponent");
+        if (!components.IsComponentRegistered<NavAgentComponent>()) components.RegisterComponent<NavAgentComponent>("NavAgentComponent");
+        if (!components.IsComponentRegistered<NavWaypointComponent>()) components.RegisterComponent<NavWaypointComponent>("NavWaypointComponent");
+        if (!components.IsComponentRegistered<RuntimeUIComponent>()) components.RegisterComponent<RuntimeUIComponent>("RuntimeUIComponent");
+        if (!components.IsComponentRegistered<DialogueComponent>()) components.RegisterComponent<DialogueComponent>("DialogueComponent");
+    }
+
     static void Save(const std::string& path,
         const EntityManager& entities,
         const ComponentManager& comps,
@@ -47,6 +69,9 @@ public:
             entry["name"] = meta.names.count(entity.id)
                 ? meta.names.at(entity.id)
                 : "Entity " + std::to_string(entity.id);
+            entry["tag"] = comps.HasComponent<TagComponent>(entity)
+                ? comps.GetComponent<TagComponent>(entity).tag
+                : std::string{};
 
             if (comps.HasComponent<TransformComponent>(entity))
             {
@@ -103,7 +128,10 @@ public:
                 const auto& collider = comps.GetComponent<ColliderComponent>(entity);
                 entry["collider"] = {
                     { "halfExtents", { collider.halfExtents.x, collider.halfExtents.y, collider.halfExtents.z } },
-                    { "isStatic", collider.isStatic }
+                    { "isStatic", collider.isStatic },
+                    { "mode", static_cast<int>(collider.mode) },
+                    { "layer", collider.layer },
+                    { "mask", collider.mask }
                 };
             }
 
@@ -113,6 +141,23 @@ public:
                 entry["script"] = {
                     { "path", script.ScriptPath }
                 };
+            }
+
+            if (comps.HasComponent<DialogueComponent>(entity))
+            {
+                const auto& dialogue = comps.GetComponent<DialogueComponent>(entity);
+                entry["dialogue"] = {
+                    { "nextEntryId", dialogue.nextEntryId },
+                    { "entries", json::array() }
+                };
+
+                for (const auto& dialogueEntry : dialogue.entries)
+                {
+                    entry["dialogue"]["entries"].push_back({
+                        { "id", dialogueEntry.id },
+                        { "text", dialogueEntry.text }
+                    });
+                }
             }
 
             if (comps.HasComponent<AudioSourceComponent>(entity))
@@ -185,15 +230,27 @@ public:
             {
                 const auto& ui = comps.GetComponent<RuntimeUIComponent>(entity);
                 entry["runtimeUI"] = {
+                    { "isScreenUI", ui.isScreenUI },
+                    { "isCanvasRoot", ui.isCanvasRoot },
                     { "type", static_cast<int>(ui.type) },
                     { "anchor", static_cast<int>(ui.anchor) },
+                    { "canvasId", ui.canvasId },
                     { "text", ui.text },
                     { "texturePath", ui.texturePath },
                     { "buttonEvent", ui.buttonEvent },
+                    { "luaFunction", ui.luaFunction },
+                    { "luaArgumentType", static_cast<int>(ui.luaArgumentType) },
+                    { "luaStringArgument", ui.luaStringArgument },
+                    { "luaBoolArgument", ui.luaBoolArgument },
+                    { "luaIntArgument", ui.luaIntArgument },
                     { "offsetX", ui.offsetX },
                     { "offsetY", ui.offsetY },
                     { "width", ui.width },
                     { "height", ui.height },
+                    { "buttonColor", { ui.buttonColor.r, ui.buttonColor.g, ui.buttonColor.b, ui.buttonColor.a } },
+                    { "buttonHoveredColor", { ui.buttonHoveredColor.r, ui.buttonHoveredColor.g, ui.buttonHoveredColor.b, ui.buttonHoveredColor.a } },
+                    { "buttonPressedColor", { ui.buttonPressedColor.r, ui.buttonPressedColor.g, ui.buttonPressedColor.b, ui.buttonPressedColor.a } },
+                    { "textColor", { ui.textColor.r, ui.textColor.g, ui.textColor.b, ui.textColor.a } },
                     { "visible", ui.visible }
                 };
             }
@@ -247,6 +304,13 @@ public:
         {
             const Entity entity = entities.CreateEntity();
             meta.SetName(entity, entry.value("name", "Entity " + std::to_string(entity.id)));
+            const std::string tagValue = entry.value("tag", std::string{});
+            if (!tagValue.empty())
+            {
+                TagComponent tag;
+                tag.tag = tagValue;
+                comps.AddComponent(entity, tag);
+            }
 
             const bool hasTransform = entry.contains("transform");
             if (hasTransform)
@@ -337,6 +401,9 @@ public:
                     colliderEntry["halfExtents"][2]
                 };
                 collider.isStatic = colliderEntry.value("isStatic", false);
+                collider.mode = static_cast<CollisionMode>(colliderEntry.value("mode", static_cast<int>(CollisionMode::Blocking)));
+                collider.layer = colliderEntry.value("layer", collider.layer);
+                collider.mask = colliderEntry.value("mask", collider.mask);
                 comps.AddComponent(entity, collider);
             }
 
@@ -345,6 +412,27 @@ public:
                 ScriptComponent script;
                 script.ScriptPath = entry["script"].value("path", "");
                 comps.AddComponent(entity, script);
+            }
+
+            if (entry.contains("dialogue"))
+            {
+                DialogueComponent dialogue;
+                const auto& dialogueEntry = entry["dialogue"];
+                dialogue.nextEntryId = dialogueEntry.value("nextEntryId", dialogue.nextEntryId);
+
+                if (dialogueEntry.contains("entries"))
+                {
+                    for (const auto& item : dialogueEntry["entries"])
+                    {
+                        DialogueEntry value;
+                        value.id = item.value("id", value.id);
+                        value.text = item.value("text", std::string{});
+                        dialogue.entries.push_back(value);
+                        dialogue.nextEntryId = std::max(dialogue.nextEntryId, value.id + 1);
+                    }
+                }
+
+                comps.AddComponent(entity, dialogue);
             }
 
             if (entry.contains("audioSource"))
@@ -431,15 +519,59 @@ public:
             {
                 RuntimeUIComponent ui;
                 const auto& uiEntry = entry["runtimeUI"];
-                ui.type = static_cast<RuntimeUIElementType>(uiEntry.value("type", 0));
-                ui.anchor = static_cast<RuntimeUIAnchor>(uiEntry.value("anchor", 0));
+                ui.isScreenUI = uiEntry.value("isScreenUI", ui.isScreenUI);
+                ui.isCanvasRoot = uiEntry.value("isCanvasRoot", ui.isCanvasRoot);
+                ui.type = static_cast<RuntimeUIElementType>(uiEntry.value("type", static_cast<int>(ui.type)));
+                ui.anchor = static_cast<RuntimeUIAnchor>(uiEntry.value("anchor", static_cast<int>(ui.anchor)));
+                ui.canvasId = uiEntry.value("canvasId", ui.canvasId);
                 ui.text = uiEntry.value("text", ui.text);
                 ui.texturePath = uiEntry.value("texturePath", ui.texturePath);
                 ui.buttonEvent = uiEntry.value("buttonEvent", ui.buttonEvent);
+                ui.luaFunction = uiEntry.value("luaFunction", ui.luaFunction);
+                ui.luaArgumentType = static_cast<RuntimeUIArgumentType>(uiEntry.value("luaArgumentType", static_cast<int>(ui.luaArgumentType)));
+                ui.luaStringArgument = uiEntry.value("luaStringArgument", ui.luaStringArgument);
+                ui.luaBoolArgument = uiEntry.value("luaBoolArgument", ui.luaBoolArgument);
+                ui.luaIntArgument = uiEntry.value("luaIntArgument", ui.luaIntArgument);
                 ui.offsetX = uiEntry.value("offsetX", ui.offsetX);
                 ui.offsetY = uiEntry.value("offsetY", ui.offsetY);
                 ui.width = uiEntry.value("width", ui.width);
                 ui.height = uiEntry.value("height", ui.height);
+                if (uiEntry.contains("buttonColor") && uiEntry["buttonColor"].is_array() && uiEntry["buttonColor"].size() == 4)
+                {
+                    ui.buttonColor = {
+                        uiEntry["buttonColor"][0].get<float>(),
+                        uiEntry["buttonColor"][1].get<float>(),
+                        uiEntry["buttonColor"][2].get<float>(),
+                        uiEntry["buttonColor"][3].get<float>()
+                    };
+                }
+                if (uiEntry.contains("buttonHoveredColor") && uiEntry["buttonHoveredColor"].is_array() && uiEntry["buttonHoveredColor"].size() == 4)
+                {
+                    ui.buttonHoveredColor = {
+                        uiEntry["buttonHoveredColor"][0].get<float>(),
+                        uiEntry["buttonHoveredColor"][1].get<float>(),
+                        uiEntry["buttonHoveredColor"][2].get<float>(),
+                        uiEntry["buttonHoveredColor"][3].get<float>()
+                    };
+                }
+                if (uiEntry.contains("buttonPressedColor") && uiEntry["buttonPressedColor"].is_array() && uiEntry["buttonPressedColor"].size() == 4)
+                {
+                    ui.buttonPressedColor = {
+                        uiEntry["buttonPressedColor"][0].get<float>(),
+                        uiEntry["buttonPressedColor"][1].get<float>(),
+                        uiEntry["buttonPressedColor"][2].get<float>(),
+                        uiEntry["buttonPressedColor"][3].get<float>()
+                    };
+                }
+                if (uiEntry.contains("textColor") && uiEntry["textColor"].is_array() && uiEntry["textColor"].size() == 4)
+                {
+                    ui.textColor = {
+                        uiEntry["textColor"][0].get<float>(),
+                        uiEntry["textColor"][1].get<float>(),
+                        uiEntry["textColor"][2].get<float>(),
+                        uiEntry["textColor"][3].get<float>()
+                    };
+                }
                 ui.visible = uiEntry.value("visible", ui.visible);
                 comps.AddComponent(entity, ui);
             }

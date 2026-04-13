@@ -35,6 +35,7 @@ public:
     void Update(Entity entity, ScriptComponent& script, float dt);
 	bool ValidateScriptText(const std::string& scriptText, std::string& errorOut);
     void AutoReloadModifiedScripts(const EntityManager& entities, ComponentManager& components);
+    bool CallNamedFunction(const std::string& functionName, Entity entity);
 
     const std::vector<ScriptError>& GetErrors() const { return m_Errors; }
     void ClearErrors() { m_Errors.clear(); }
@@ -52,6 +53,7 @@ private:
 
     int GetFunctionRef(const char* name);
     void CallFunction(int fnRef, Entity entity, float dt);
+    void CallTriggerFunction(int fnRef, Entity entity, Entity other);
     ComponentManager* components = nullptr;
     EntityManager* entityManager = nullptr;
     

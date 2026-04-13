@@ -123,9 +123,45 @@ bool PrototypeBuilder::Build(const std::filesystem::path& projectFile, std::stri
     }
 
     copyIfExists(project.rootPath / "Assets", outputRoot / "Assets", true);
-    copyIfExists(project.rootPath / "Scenes", outputRoot / "Scenes", true);
     copyIfExists(project.rootPath / "Scripts", outputRoot / "Scripts");
     copyIfExists(project.rootPath / "Config", outputRoot / "Config", true);
+
+    const std::filesystem::path packagedScenesRoot = outputRoot / "Scenes";
+    std::filesystem::create_directories(packagedScenesRoot, ec);
+    if (ec)
+    {
+        SetError(errorOut, "Failed to create packaged Scenes folder: " + packagedScenesRoot.string());
+        return false;
+    }
+
+    bool copiedAnyScene = false;
+    for (const auto& buildScene : project.buildScenes)
+    {
+        if (!buildScene.included)
+        {
+            continue;
+        }
+
+        for (const auto& scene : project.scenes)
+        {
+            if (scene.id != buildScene.sceneId)
+            {
+                continue;
+            }
+
+            const auto relativeScenePath = std::filesystem::relative(scene.path, project.rootPath, ec);
+            ec.clear();
+            copyIfExists(scene.path, outputRoot / relativeScenePath, true);
+            copiedAnyScene = true;
+            break;
+        }
+    }
+
+    if (!copiedAnyScene)
+    {
+        SetError(errorOut, "[Packaging] No scenes are included in Build Settings.");
+        return false;
+    }
 
     if (!std::filesystem::exists(outputRoot / "Config" / "game.cfg") && std::filesystem::exists(project.configPath))
     {

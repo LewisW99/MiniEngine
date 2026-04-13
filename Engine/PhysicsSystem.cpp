@@ -2,10 +2,12 @@
 #include "PhysicsSystem.h"
 
 #include "Components/ColliderComponent.h"
+#include "Components/TagComponent.h"
 #include "TransformSystem.h"
 
 #include <glm/glm.hpp>
 #include <algorithm>
+#include <string>
 #include "TransformSystem.h"
 #include "Components/Physics/PhysicsComponent.h"
 
@@ -22,6 +24,44 @@ static bool AABBOverlap(
         std::abs(aPos.x - bPos.x) <= (aHalf.x + bHalf.x) &&
         std::abs(aPos.y - bPos.y) <= (aHalf.y + bHalf.y) &&
         std::abs(aPos.z - bPos.z) <= (aHalf.z + bHalf.z);
+}
+
+static bool CanCollide(const ColliderComponent& a, const ColliderComponent& b)
+{
+    return (a.mask & b.layer) != 0u && (b.mask & a.layer) != 0u;
+}
+
+static void RecordOverlap(
+    ComponentManager& comps,
+    const Entity entity,
+    const Entity other,
+    const bool isTriggerPair)
+{
+    if (!comps.HasComponent<PhysicsComponent>(entity))
+    {
+        return;
+    }
+
+    auto& physics = comps.GetComponent<PhysicsComponent>(entity);
+    physics.overlappingEntities.push_back(other.id);
+
+    if (comps.HasComponent<TagComponent>(other))
+    {
+        const auto& tag = comps.GetComponent<TagComponent>(other);
+        if (!tag.tag.empty())
+        {
+            physics.overlappingTags.push_back(tag.tag);
+            if (isTriggerPair)
+            {
+                physics.triggerTags.push_back(tag.tag);
+            }
+        }
+    }
+
+    if (isTriggerPair)
+    {
+        physics.triggerEntities.push_back(other.id);
+    }
 }
 
 void PhysicsSystem::Update(
@@ -45,6 +85,11 @@ void PhysicsSystem::Update(
 
         auto& physics =
             comps.GetComponent<PhysicsComponent>(e);
+
+        physics.overlappingEntities.clear();
+        physics.overlappingTags.clear();
+        physics.triggerEntities.clear();
+        physics.triggerTags.clear();
 
         auto& transform =
             comps.GetComponent<TransformComponent>(e);
@@ -88,7 +133,7 @@ void PhysicsSystem::Update(
         auto& colA =
             comps.GetComponent<ColliderComponent>(e);
 
-        if (colA.isStatic)
+        if (colA.isStatic || colA.mode == CollisionMode::None)
             continue;
 
         for (uint32_t otherID = 0; otherID < maxEntities; ++otherID)
@@ -108,6 +153,12 @@ void PhysicsSystem::Update(
             auto& colB =
                 comps.GetComponent<ColliderComponent>(other);
 
+            if (colB.mode == CollisionMode::None)
+                continue;
+
+            if (!CanCollide(colA, colB))
+                continue;
+
             if (!colB.isStatic && otherID < id)
                 continue;
 
@@ -117,6 +168,19 @@ void PhysicsSystem::Update(
             if (!AABBOverlap(
                 transform.position, colA.halfExtents,
                 otherTransform.position, colB.halfExtents))
+                continue;
+
+            const bool isTriggerPair =
+                colA.mode == CollisionMode::Trigger ||
+                colB.mode == CollisionMode::Trigger;
+            const bool isBlockingPair =
+                colA.mode == CollisionMode::Blocking &&
+                colB.mode == CollisionMode::Blocking;
+
+            RecordOverlap(comps, e, other, isTriggerPair);
+            RecordOverlap(comps, other, e, isTriggerPair);
+
+            if (!isBlockingPair || isTriggerPair)
                 continue;
 
             // --------------------------------------------------------

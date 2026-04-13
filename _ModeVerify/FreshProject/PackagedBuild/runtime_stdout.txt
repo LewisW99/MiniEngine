@@ -1,5 +1,0 @@
-[OpenGL] Version: 3.3.0 NVIDIA 595.79
-[GLEW] Version: 2.2.0
-[Renderer] Ready for offscreen rendering.
-[Main] Allocator created...
-Allocator is :0000024D4D5D2760[ThreadPool] Started 26 threads.

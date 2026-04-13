@@ -3,6 +3,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include "RenderTypes.h"
 
 class ResourceManager
@@ -23,4 +24,5 @@ private:
 
     static std::unordered_map<std::string, Mesh> s_Meshes;
     static std::unordered_map<std::string, GLuint> s_Textures;
+    static std::unordered_set<std::string> s_FailedMeshes;
 };

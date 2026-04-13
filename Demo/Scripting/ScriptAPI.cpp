@@ -22,7 +22,9 @@ const std::vector<ScriptApiCategory>& GetScriptAPI()
             {
                 { "Spawn", "Entity.Spawn() -> entity", "Creates a new entity with a TransformComponent and returns it.", "local spawned = Entity.Spawn()" },
                 { "Destroy", "Entity.Destroy(entity)", "Destroys an entity safely.", "Entity.Destroy(self)" },
-                { "HasComponent", "Entity.HasComponent(entity, componentName) -> bool", "Checks for common components like Transform, Mesh, Material, Light, Physics, Collider, Script, and Audio.", "if Entity.HasComponent(self, \"Physics\") then print(\"physics\") end" }
+                { "HasComponent", "Entity.HasComponent(entity, componentName) -> bool", "Checks for common components like Transform, Mesh, Material, Light, Physics, Collider, Tag, Script, and Audio.", "if Entity.HasComponent(self, \"Physics\") then print(\"physics\") end" },
+                { "GetTag", "Entity.GetTag(entity) -> tag", "Returns the runtime tag for the entity if present.", "local tag = Entity.GetTag(self)" },
+                { "SetTag", "Entity.SetTag(entity, tag)", "Creates or updates the runtime tag component.", "Entity.SetTag(self, \"Pickup\")" }
             }
         },
         {
@@ -33,7 +35,8 @@ const std::vector<ScriptApiCategory>& GetScriptAPI()
                 { "AddImpulse", "Physics.AddImpulse(entity, x, y, z)", "Adds to the current velocity.", "Physics.AddImpulse(self, 0, 3, 0)" },
                 { "IsGrounded", "Physics.IsGrounded(entity) -> bool", "Returns whether the entity is grounded.", "if Physics.IsGrounded(self) then print(\"grounded\") end" },
                 { "SetEnabled", "Physics.SetEnabled(entity, enabled)", "Enables or disables the PhysicsComponent if present.", "Physics.SetEnabled(self, false)" },
-                { "IsEnabled", "Physics.IsEnabled(entity) -> bool", "Returns whether physics is enabled.", "local active = Physics.IsEnabled(self)" }
+                { "IsEnabled", "Physics.IsEnabled(entity) -> bool", "Returns whether physics is enabled.", "local active = Physics.IsEnabled(self)" },
+                { "IsTouchingTag", "Physics.IsTouchingTag(entity, tag) -> bool", "Returns true when the entity is currently overlapping another collider with the given tag.", "if Physics.IsTouchingTag(self, \"Door\") then print(\"door\") end" }
             }
         },
         {
@@ -71,6 +74,23 @@ const std::vector<ScriptApiCategory>& GetScriptAPI()
                 { "Play", "Audio.Play(entity)", "Starts the entity's AudioSourceComponent.", "Audio.Play(self)" },
                 { "Stop", "Audio.Stop(entity)", "Stops the entity's AudioSourceComponent.", "Audio.Stop(self)" },
                 { "PlayOneShot", "Audio.PlayOneShot(path)", "Plays a one-shot audio file relative to the project.", "Audio.PlayOneShot(\"Assets/Audio/pickup.wav\")" }
+            }
+        },
+        {
+            "Scene",
+            "Runtime scene loading helpers for menu and flow control",
+            {
+                { "LoadByBuildIndex", "Scene.LoadByBuildIndex(index)", "Queues a runtime scene change using the included build-scene index.", "function OnPlayButtonClicked(self, buildIndex)\n    Scene.LoadByBuildIndex(buildIndex)\nend" },
+                { "LoadByName", "Scene.LoadByName(name)", "Queues a runtime scene change using the scene asset name.", "function OnPlayButtonClicked(self, sceneName)\n    Scene.LoadByName(sceneName)\nend" }
+            }
+        },
+        {
+            "Dialogue",
+            "Dialogue entry lookup for authored conversations",
+            {
+                { "GetEntryCount", "Dialogue.GetEntryCount(entity) -> count", "Returns the number of authored dialogue entries on the entity.", "local count = Dialogue.GetEntryCount(self)" },
+                { "GetEntryByIndex", "Dialogue.GetEntryByIndex(entity, index) -> id, text", "Returns the stable entry id and text at the ordered index.", "local id, text = Dialogue.GetEntryByIndex(self, 0)" },
+                { "GetEntryText", "Dialogue.GetEntryText(entity, entryId) -> text", "Looks up a dialogue entry by its stable id.", "local text = Dialogue.GetEntryText(self, 3)" }
             }
         },
         {

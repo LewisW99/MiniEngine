@@ -1,0 +1,29 @@
+{
+    "activeScene": "Scenes/Main.scene",
+    "assetDir": "Assets",
+    "build": {
+        "scenes": [
+            {
+                "buildIndex": 0,
+                "included": true,
+                "sceneId": "scene_12613688239500"
+            }
+        ],
+        "startupSceneId": "scene_12613688239500"
+    },
+    "buildOutputDir": "PackagedBuild",
+    "configDir": "Config",
+    "engine": "MiniEngine",
+    "engineVersion": "0.1.0",
+    "name": "FreshProject",
+    "runtimeId": "FreshProject",
+    "sceneDir": "Scenes",
+    "scenes": [
+        {
+            "id": "scene_12613688239500",
+            "name": "Main",
+            "path": "Scenes/Main.scene"
+        }
+    ],
+    "startupScene": "Scenes/Main.scene"
+}

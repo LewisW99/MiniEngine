@@ -88,8 +88,8 @@ AssetType AssetDatabase::DetectType(const std::filesystem::path& ext)
     std::string e = ext.string();
     std::transform(e.begin(), e.end(), e.begin(), ::tolower);
 
-    if (e == ".fbx" || e == ".obj" || e == ".gltf" || e == ".glb") return AssetType::Model;
-    if (e == ".png" || e == ".jpg" || e == ".jpeg" || e == ".tga" || e == ".bmp" || e == ".hdr") return AssetType::Texture;
+    if (e == ".fbx" || e == ".obj" || e == ".gltf" || e == ".glb" || e == ".dae" || e == ".3ds" || e == ".blend" || e == ".ply" || e == ".stl") return AssetType::Model;
+    if (e == ".png" || e == ".jpg" || e == ".jpeg" || e == ".tga" || e == ".bmp" || e == ".hdr" || e == ".psd") return AssetType::Texture;
     if (e == ".wav" || e == ".mp3" || e == ".ogg" || e == ".flac") return AssetType::Audio;
     if (e == ".lua" || e == ".cs" || e == ".cpp" || e == ".h") return AssetType::Script;
     if (e == ".prefab") return AssetType::Prefab;

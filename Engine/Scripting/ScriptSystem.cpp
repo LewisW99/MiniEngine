@@ -5,20 +5,25 @@
 #include "../ECS/EntityManager.h"
 #include "../TransformSystem.h"
 #include "../EditorConsole.h"
+#include <algorithm>
 #include <fstream>
 #include <iostream>
 #include <optional>
 #include <sstream>
 #include "../InputSystem.h"
 #include "../Components/ColliderComponent.h"
+#include "../Components/DialogueComponent.h"
 #include "../Components/LightComponent.h"
 #include "../Components/MaterialComponent.h"
 #include "../Components/MeshComponent.h"
+#include "../Components/RuntimeUIComponent.h"
+#include "../Components/TagComponent.h"
 #include "../Components/Physics/PhysicsComponent.h"
 #include "../Components/PlayerControllerComponent.h"
 #include "../Components/CameraFollowComponent.h"
 #include "../Components/AudioSourceComponent.h"
 #include "../Systems/AudioSystem.h"
+#include "../EventBus.h"
 
 
 
@@ -56,10 +61,13 @@ static int Lua_PhysicsAddImpulse(lua_State* L);
 static int Lua_PhysicsIsGrounded(lua_State* L);
 static int Lua_PhysicsSetEnabled(lua_State* L);
 static int Lua_PhysicsIsEnabled(lua_State* L);
+static int Lua_PhysicsIsTouchingTag(lua_State* L);
 
 static int Lua_EntityDestroy(lua_State* L);
 static int Lua_EntityHasComponent(lua_State* L);
 static int Lua_EntitySpawn(lua_State* L);
+static int Lua_EntityGetTag(lua_State* L);
+static int Lua_EntitySetTag(lua_State* L);
 
 static int Lua_MaterialGetAlbedo(lua_State* L);
 static int Lua_MaterialSetAlbedo(lua_State* L);
@@ -81,6 +89,11 @@ static int Lua_LightSetIntensity(lua_State* L);
 static int Lua_AudioPlay(lua_State* L);
 static int Lua_AudioStop(lua_State* L);
 static int Lua_AudioPlayOneShot(lua_State* L);
+static int Lua_SceneLoadByBuildIndex(lua_State* L);
+static int Lua_SceneLoadByName(lua_State* L);
+static int Lua_DialogueGetEntryCount(lua_State* L);
+static int Lua_DialogueGetEntryByIndex(lua_State* L);
+static int Lua_DialogueGetEntryText(lua_State* L);
 
 static PhysicsComponent* GetPhysics(Entity e)
 {
@@ -125,6 +138,17 @@ static MaterialComponent* GetMaterial(Entity e)
     return &comps->GetComponent<MaterialComponent>(e);
 }
 
+static TagComponent* GetTag(Entity e)
+{
+    auto* comps = ScriptSystem::Get().GetComponents();
+    if (comps == nullptr || !comps->HasComponent<TagComponent>(e))
+    {
+        return nullptr;
+    }
+
+    return &comps->GetComponent<TagComponent>(e);
+}
+
 static LightComponent* GetLight(Entity e)
 {
     auto* comps = ScriptSystem::Get().GetComponents();
@@ -145,6 +169,17 @@ static AudioSourceComponent* GetAudioSource(Entity e)
     }
 
     return &comps->GetComponent<AudioSourceComponent>(e);
+}
+
+static DialogueComponent* GetDialogue(Entity e)
+{
+    auto* comps = ScriptSystem::Get().GetComponents();
+    if (comps == nullptr || !comps->HasComponent<DialogueComponent>(e))
+    {
+        return nullptr;
+    }
+
+    return &comps->GetComponent<DialogueComponent>(e);
 }
 
 static Entity GetEntityArg(lua_State* L, const int index, bool* valid = nullptr)
@@ -189,8 +224,10 @@ static void DestroyKnownComponents(ComponentManager& components, const Entity en
     RemoveComponentIfPresent<MeshComponent>(components, entity);
     RemoveComponentIfPresent<MaterialComponent>(components, entity);
     RemoveComponentIfPresent<LightComponent>(components, entity);
+    RemoveComponentIfPresent<TagComponent>(components, entity);
     RemoveComponentIfPresent<PhysicsComponent>(components, entity);
     RemoveComponentIfPresent<ColliderComponent>(components, entity);
+    RemoveComponentIfPresent<RuntimeUIComponent>(components, entity);
     RemoveComponentIfPresent<ScriptComponent>(components, entity);
     RemoveComponentIfPresent<AudioSourceComponent>(components, entity);
     RemoveComponentIfPresent<PlayerControllerComponent>(components, entity);
@@ -215,6 +252,10 @@ static bool HasNamedComponent(ComponentManager& components, const Entity entity,
     {
         return components.HasComponent<LightComponent>(entity);
     }
+    if (name == "TagComponent" || name == "Tag")
+    {
+        return components.HasComponent<TagComponent>(entity);
+    }
     if (name == "PhysicsComponent" || name == "Physics")
     {
         return components.HasComponent<PhysicsComponent>(entity);
@@ -226,6 +267,10 @@ static bool HasNamedComponent(ComponentManager& components, const Entity entity,
     if (name == "ScriptComponent" || name == "Script")
     {
         return components.HasComponent<ScriptComponent>(entity);
+    }
+    if (name == "RuntimeUIComponent" || name == "RuntimeUI" || name == "UI")
+    {
+        return components.HasComponent<RuntimeUIComponent>(entity);
     }
     if (name == "AudioSourceComponent" || name == "AudioSource" || name == "Audio")
     {
@@ -484,6 +529,8 @@ void ScriptSystem::Init(ComponentManager* cm, EntityManager* em)
     lua_setfield(m_L, -2, "SetEnabled");
     lua_pushcfunction(m_L, Lua_PhysicsIsEnabled);
     lua_setfield(m_L, -2, "IsEnabled");
+    lua_pushcfunction(m_L, Lua_PhysicsIsTouchingTag);
+    lua_setfield(m_L, -2, "IsTouchingTag");
 
     lua_setglobal(m_L, "Physics");
 
@@ -494,6 +541,10 @@ void ScriptSystem::Init(ComponentManager* cm, EntityManager* em)
     lua_setfield(m_L, -2, "HasComponent");
     lua_pushcfunction(m_L, Lua_EntitySpawn);
     lua_setfield(m_L, -2, "Spawn");
+    lua_pushcfunction(m_L, Lua_EntityGetTag);
+    lua_setfield(m_L, -2, "GetTag");
+    lua_pushcfunction(m_L, Lua_EntitySetTag);
+    lua_setfield(m_L, -2, "SetTag");
     lua_setglobal(m_L, "Entity");
 
     lua_newtable(m_L);
@@ -542,6 +593,119 @@ void ScriptSystem::Init(ComponentManager* cm, EntityManager* em)
     lua_pushcfunction(m_L, Lua_AudioPlayOneShot);
     lua_setfield(m_L, -2, "PlayOneShot");
     lua_setglobal(m_L, "Audio");
+
+    lua_newtable(m_L);
+    lua_pushcfunction(m_L, Lua_SceneLoadByBuildIndex);
+    lua_setfield(m_L, -2, "LoadByBuildIndex");
+    lua_pushcfunction(m_L, Lua_SceneLoadByName);
+    lua_setfield(m_L, -2, "LoadByName");
+    lua_setglobal(m_L, "Scene");
+
+    lua_newtable(m_L);
+    lua_pushcfunction(m_L, Lua_DialogueGetEntryCount);
+    lua_setfield(m_L, -2, "GetEntryCount");
+    lua_pushcfunction(m_L, Lua_DialogueGetEntryByIndex);
+    lua_setfield(m_L, -2, "GetEntryByIndex");
+    lua_pushcfunction(m_L, Lua_DialogueGetEntryText);
+    lua_setfield(m_L, -2, "GetEntryText");
+    lua_setglobal(m_L, "Dialogue");
+
+    EventBus::Subscribe("UIButtonClicked", [this](const EngineEvent& event)
+        {
+            if (!event.payload.empty())
+            {
+                const Entity entity{ event.entityId };
+                if (CallNamedFunction(event.payload, entity))
+                {
+                    EditorConsole::Log("[Lua] UI callback '" + event.payload + "' invoked on entity " + std::to_string(entity.id) + ".");
+                }
+                else
+                {
+                    EditorConsole::Warn("[Lua] UI callback '" + event.payload + "' could not be invoked on entity " + std::to_string(entity.id) + ".");
+                }
+            }
+            else
+            {
+                EditorConsole::Warn("[Lua] UI button click ignored because no function is bound.");
+            }
+        });
+}
+
+bool ScriptSystem::CallNamedFunction(const std::string& functionName, const Entity entity)
+{
+    if (m_L == nullptr || functionName.empty())
+    {
+        return false;
+    }
+
+    if (entityManager == nullptr || !entityManager->IsAlive(entity))
+    {
+        EditorConsole::Error("[Lua] UI callback ignored because the target entity is invalid.");
+        return false;
+    }
+
+    if (components == nullptr || !components->HasComponent<ScriptComponent>(entity))
+    {
+        EditorConsole::Error("[Lua] UI callback ignored because the button entity has no Script component.");
+        return false;
+    }
+
+    const auto& script = components->GetComponent<ScriptComponent>(entity);
+    if (script.ScriptPath.empty())
+    {
+        EditorConsole::Error("[Lua] UI callback ignored because the button Script component has no script path.");
+        return false;
+    }
+
+    lua_pushcfunction(m_L, LuaTraceback);
+    const int errFunc = lua_gettop(m_L);
+
+    lua_getglobal(m_L, functionName.c_str());
+    if (!lua_isfunction(m_L, -1))
+    {
+        EditorConsole::Warn("[Lua] Function '" + functionName + "' is not available in the current Lua state.");
+        lua_pop(m_L, 1);
+        lua_pop(m_L, 1);
+        return false;
+    }
+
+    int argCount = 1;
+    PushEntity(m_L, entity);
+
+    if (components != nullptr && components->HasComponent<RuntimeUIComponent>(entity))
+    {
+        const auto& ui = components->GetComponent<RuntimeUIComponent>(entity);
+        switch (ui.luaArgumentType)
+        {
+        case RuntimeUIArgumentType::String:
+            lua_pushstring(m_L, ui.luaStringArgument.c_str());
+            ++argCount;
+            break;
+        case RuntimeUIArgumentType::Bool:
+            lua_pushboolean(m_L, ui.luaBoolArgument ? 1 : 0);
+            ++argCount;
+            break;
+        case RuntimeUIArgumentType::Int:
+            lua_pushinteger(m_L, ui.luaIntArgument);
+            ++argCount;
+            break;
+        case RuntimeUIArgumentType::None:
+        default:
+            break;
+        }
+    }
+
+    if (lua_pcall(m_L, argCount, 0, errFunc) != LUA_OK)
+    {
+        const char* err = lua_tostring(m_L, -1);
+        EditorConsole::Error(err != nullptr ? err : "[Lua] UI callback failed.");
+        lua_pop(m_L, 1);
+        lua_remove(m_L, errFunc);
+        return false;
+    }
+
+    lua_remove(m_L, errFunc);
+    return true;
 }
 
 void ScriptSystem::Shutdown()
@@ -617,6 +781,9 @@ void ScriptSystem::LoadScript(ScriptComponent& script)
     script.OnStart = GetFunctionRef("OnStart");
     script.OnUpdate = GetFunctionRef("OnUpdate");
     script.OnDestroy = GetFunctionRef("OnDestroy");
+    script.OnTriggerEnter = GetFunctionRef("OnTriggerEnter");
+    script.OnTriggerStay = GetFunctionRef("OnTriggerStay");
+    script.OnTriggerExit = GetFunctionRef("OnTriggerExit");
     script.Started = false;
     m_LastWriteTimes[script.ScriptPath] = std::filesystem::last_write_time(fullPath);
     m_LastReloadSucceeded = true;
@@ -674,6 +841,39 @@ void ScriptSystem::CallFunction(int fnRef, Entity entity, float dt)
     lua_remove(m_L, errFunc);
 }
 
+void ScriptSystem::CallTriggerFunction(int fnRef, Entity entity, Entity other)
+{
+    if (fnRef == LUA_REFNIL)
+        return;
+
+    lua_pushcfunction(m_L, LuaTraceback);
+    const int errFunc = lua_gettop(m_L);
+
+    lua_rawgeti(m_L, LUA_REGISTRYINDEX, fnRef);
+    PushEntity(m_L, entity);
+    PushEntity(m_L, other);
+
+    if (lua_pcall(m_L, 2, 0, errFunc) != LUA_OK)
+    {
+        const char* err = lua_tostring(m_L, -1);
+        const std::string errStr = err ? err : "[Lua] Runtime trigger error";
+
+        if (auto parsed = ParseLuaError(errStr, "<runtime>", true))
+        {
+            EditorConsole::Error(errStr, parsed->scriptPath, parsed->line);
+            m_Errors.push_back(*parsed);
+        }
+        else
+        {
+            EditorConsole::Error(errStr);
+        }
+
+        lua_pop(m_L, 1);
+    }
+
+    lua_remove(m_L, errFunc);
+}
+
 void ScriptSystem::Update(Entity entity, ScriptComponent& script, float dt)
 {
     if (!script.Started)
@@ -683,6 +883,43 @@ void ScriptSystem::Update(Entity entity, ScriptComponent& script, float dt)
     }
 
     CallFunction(script.OnUpdate, entity, dt);
+
+    if (components == nullptr || !components->HasComponent<PhysicsComponent>(entity))
+    {
+        return;
+    }
+
+    auto& physics = components->GetComponent<PhysicsComponent>(entity);
+
+    for (const EntityID otherId : physics.triggerEntities)
+    {
+        const Entity other{ otherId };
+        const bool wasOverlapping = std::find(
+            physics.previousTriggerEntities.begin(),
+            physics.previousTriggerEntities.end(),
+            otherId) != physics.previousTriggerEntities.end();
+
+        if (!wasOverlapping)
+        {
+            CallTriggerFunction(script.OnTriggerEnter, entity, other);
+        }
+
+        CallTriggerFunction(script.OnTriggerStay, entity, other);
+    }
+
+    for (const EntityID otherId : physics.previousTriggerEntities)
+    {
+        const bool stillOverlapping = std::find(
+            physics.triggerEntities.begin(),
+            physics.triggerEntities.end(),
+            otherId) != physics.triggerEntities.end();
+        if (!stillOverlapping)
+        {
+            CallTriggerFunction(script.OnTriggerExit, entity, Entity{ otherId });
+        }
+    }
+
+    physics.previousTriggerEntities = physics.triggerEntities;
 }
 
 void ScriptSystem::AutoReloadModifiedScripts(const EntityManager& entities, ComponentManager& components)
@@ -971,6 +1208,31 @@ static int Lua_PhysicsIsEnabled(lua_State* L)
     return 1;
 }
 
+static int Lua_PhysicsIsTouchingTag(lua_State* L)
+{
+    bool valid = false;
+    const Entity entity = GetEntityArg(L, 1, &valid);
+    const char* tagName = luaL_optstring(L, 2, "");
+    if (!valid || tagName == nullptr)
+    {
+        lua_pushboolean(L, false);
+        return 1;
+    }
+
+    if (const auto* physics = GetPhysics(entity))
+    {
+        const bool touching = std::find(
+            physics->overlappingTags.begin(),
+            physics->overlappingTags.end(),
+            tagName) != physics->overlappingTags.end();
+        lua_pushboolean(L, touching);
+        return 1;
+    }
+
+    lua_pushboolean(L, false);
+    return 1;
+}
+
 static int Lua_EntityDestroy(lua_State* L)
 {
     bool valid = false;
@@ -1024,9 +1286,48 @@ static int Lua_EntitySpawn(lua_State* L)
     {
         components->AddComponent(entity, TransformComponent{});
     }
+    if (!components->HasComponent<TagComponent>(entity))
+    {
+        components->AddComponent(entity, TagComponent{});
+    }
 
     PushEntity(L, entity);
     return 1;
+}
+
+static int Lua_EntityGetTag(lua_State* L)
+{
+    bool valid = false;
+    const Entity entity = GetEntityArg(L, 1, &valid);
+    const auto* tag = valid ? GetTag(entity) : nullptr;
+    lua_pushstring(L, tag != nullptr ? tag->tag.c_str() : "");
+    return 1;
+}
+
+static int Lua_EntitySetTag(lua_State* L)
+{
+    bool valid = false;
+    const Entity entity = GetEntityArg(L, 1, &valid);
+    if (!valid)
+    {
+        return 0;
+    }
+
+    auto* components = ScriptSystem::Get().GetComponents();
+    if (components == nullptr)
+    {
+        return 0;
+    }
+
+    if (!components->HasComponent<TagComponent>(entity))
+    {
+        components->AddComponent(entity, TagComponent{});
+    }
+
+    auto& tag = components->GetComponent<TagComponent>(entity);
+    const char* value = luaL_optstring(L, 2, tag.tag.c_str());
+    tag.tag = value != nullptr ? value : "";
+    return 0;
 }
 
 static int Lua_MaterialGetAlbedo(lua_State* L)
@@ -1325,6 +1626,76 @@ static int Lua_AudioPlayOneShot(lua_State* L)
     }
 
     return 0;
+}
+
+static int Lua_SceneLoadByBuildIndex(lua_State* L)
+{
+    const int buildIndex = static_cast<int>(luaL_optinteger(L, 1, -1));
+    if (buildIndex >= 0)
+    {
+        EventBus::Publish({ "LoadSceneByBuildIndex", 0, {}, std::to_string(buildIndex) });
+    }
+
+    return 0;
+}
+
+static int Lua_SceneLoadByName(lua_State* L)
+{
+    const char* sceneName = luaL_optstring(L, 1, "");
+    if (sceneName != nullptr && sceneName[0] != '\0')
+    {
+        EventBus::Publish({ "LoadSceneByName", 0, sceneName, sceneName });
+    }
+
+    return 0;
+}
+
+static int Lua_DialogueGetEntryCount(lua_State* L)
+{
+    bool valid = false;
+    const Entity entity = GetEntityArg(L, 1, &valid);
+    const auto* dialogue = valid ? GetDialogue(entity) : nullptr;
+    lua_pushinteger(L, dialogue != nullptr ? static_cast<lua_Integer>(dialogue->entries.size()) : 0);
+    return 1;
+}
+
+static int Lua_DialogueGetEntryByIndex(lua_State* L)
+{
+    bool valid = false;
+    const Entity entity = GetEntityArg(L, 1, &valid);
+    const int index = static_cast<int>(luaL_optinteger(L, 2, 0));
+    if (!valid || index < 0)
+    {
+        return 0;
+    }
+
+    const auto* dialogue = GetDialogue(entity);
+    if (dialogue == nullptr || index >= static_cast<int>(dialogue->entries.size()))
+    {
+        return 0;
+    }
+
+    const auto& entry = dialogue->entries[static_cast<std::size_t>(index)];
+    lua_pushinteger(L, entry.id);
+    lua_pushstring(L, entry.text.c_str());
+    return 2;
+}
+
+static int Lua_DialogueGetEntryText(lua_State* L)
+{
+    bool valid = false;
+    const Entity entity = GetEntityArg(L, 1, &valid);
+    const int entryId = static_cast<int>(luaL_optinteger(L, 2, -1));
+    if (!valid || entryId < 0)
+    {
+        lua_pushstring(L, "");
+        return 1;
+    }
+
+    const auto* dialogue = GetDialogue(entity);
+    const auto* entry = dialogue != nullptr ? dialogue->FindEntryById(entryId) : nullptr;
+    lua_pushstring(L, entry != nullptr ? entry->text.c_str() : "");
+    return 1;
 }
 
 

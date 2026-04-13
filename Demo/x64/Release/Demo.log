@@ -1,0 +1,12 @@
+﻿  Editor.cpp
+  ProjectManager.cpp
+  RecentProjects.cpp
+  StartupScreen.cpp
+  main.cpp
+  PrototypeBuilder.cpp
+  ScriptAPI.cpp
+  Generating code
+  Previous IPDB not found, fall back to full compilation.
+  All 13495 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+  Finished generating code
+  Demo.vcxproj -> C:\Users\Lewis\source\repos\MiniEngine\x64\Release\Demo.exe

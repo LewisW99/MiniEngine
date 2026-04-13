@@ -1,0 +1,21 @@
+{
+    "assets": [],
+    "buildScenes": [
+        {
+            "buildIndex": 0,
+            "id": "scene_28972268307900",
+            "name": "Main",
+            "path": "Scenes/Main.scene"
+        }
+    ],
+    "config": [
+        "Config/game.cfg",
+        "Config/runtime.cfg",
+        "Config/settings.json"
+    ],
+    "runtimeId": "FreshProject",
+    "scenes": [
+        "Scenes/Main.scene"
+    ],
+    "startupScene": "Scenes/Main.scene"
+}

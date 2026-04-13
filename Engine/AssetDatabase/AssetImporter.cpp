@@ -8,9 +8,11 @@
 #include <miniaudio.h>
 
 #include <filesystem>
+#include <algorithm>
 #include <iostream>
 #include <limits>
 #include <sstream>
+#include <unordered_set>
 #include "../../Demo/Editor/Managers/ProjectManager.h"
 
 namespace
@@ -18,11 +20,54 @@ namespace
     ma_engine gAudioEngine;
     bool gAudioInitialized = false;
     std::string gLastError;
+    std::vector<std::string> gDiagnostics;
+    const std::unordered_set<std::string> kModelExtensions = {
+        ".obj", ".fbx", ".gltf", ".glb", ".dae", ".3ds", ".blend", ".ply", ".stl"
+    };
+    const std::unordered_set<std::string> kTextureExtensions = {
+        ".png", ".jpg", ".jpeg", ".bmp", ".tga", ".hdr", ".psd"
+    };
+    const std::unordered_set<std::string> kAudioExtensions = {
+        ".wav", ".mp3", ".ogg", ".flac"
+    };
+
+    void AddDiagnostic(const std::string& message)
+    {
+        gDiagnostics.push_back(message);
+        if (gDiagnostics.size() > 64)
+        {
+            gDiagnostics.erase(gDiagnostics.begin(), gDiagnostics.begin() + static_cast<std::ptrdiff_t>(gDiagnostics.size() - 64));
+        }
+    }
 
     void SetLastError(const std::string& message)
     {
         gLastError = message;
+        AddDiagnostic(message);
         std::cerr << message << "\n";
+    }
+
+    std::string ToLowerExtension(const std::filesystem::path& path)
+    {
+        std::string extension = path.extension().string();
+        std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
+        return extension;
+    }
+
+    bool ValidateExtension(
+        const std::filesystem::path& path,
+        const std::unordered_set<std::string>& supportedExtensions,
+        const char* assetKind)
+    {
+        const std::string extension = ToLowerExtension(path);
+        if (supportedExtensions.find(extension) != supportedExtensions.end())
+        {
+            return true;
+        }
+
+        SetLastError(std::string("[AssetImporter] Unsupported ") + assetKind +
+            " format: " + path.filename().string());
+        return false;
     }
 
     std::string NormalizeProjectRelativePath(const std::filesystem::path& path)
@@ -120,6 +165,8 @@ MeshData AssetImporter::ImportModel(const std::string& path)
         aiProcess_SortByPType |
         aiProcess_GenNormals |
         aiProcess_ImproveCacheLocality |
+        aiProcess_FindInvalidData |
+        aiProcess_ValidateDataStructure |
         aiProcess_FlipUVs);
 
     if (scene == nullptr || !scene->HasMeshes())
@@ -255,6 +302,7 @@ MeshData AssetImporter::ImportModel(const std::string& path)
         << " mesh(es) from "
         << NormalizeProjectRelativePath(resolvedPath)
         << "\n";
+    AddDiagnostic("[ModelImporter] Loaded " + NormalizeProjectRelativePath(resolvedPath));
 
     if (skippedMeshCount > 0 || invalidVertexCount > 0 || invalidFaceCount > 0)
     {
@@ -279,6 +327,10 @@ bool AssetImporter::ImportModelAsset(const std::string& path)
         SetLastError("[AssetImporter] Model source file not found: " + path);
         return false;
     }
+    if (!ValidateExtension(source, kModelExtensions, "model"))
+    {
+        return false;
+    }
 
     const MeshData mesh = ImportModel(path);
     if (!mesh.IsValid())
@@ -294,6 +346,8 @@ bool AssetImporter::ImportModelAsset(const std::string& path)
     std::cout << "[AssetImporter] Imported model to "
         << NormalizeProjectRelativePath(GetImportTargetFolder("Models") / source.filename())
         << "\n";
+    AddDiagnostic("[AssetImporter] Imported model to " +
+        NormalizeProjectRelativePath(GetImportTargetFolder("Models") / source.filename()));
     return true;
 }
 
@@ -304,11 +358,26 @@ ImportedTexture AssetImporter::LoadTextureData(const std::string& path, const bo
     stbi_set_flip_vertically_on_load(flipVertically ? 1 : 0);
 
     const std::filesystem::path resolvedPath = ResolveProjectPath(path);
+    if (!std::filesystem::exists(resolvedPath))
+    {
+        SetLastError("[TextureImporter] Texture source file not found: " + resolvedPath.string());
+        return texture;
+    }
+    if (!ValidateExtension(resolvedPath, kTextureExtensions, "texture"))
+    {
+        return texture;
+    }
     unsigned char* pixels = stbi_load(resolvedPath.string().c_str(), &texture.width, &texture.height, &texture.channels, 0);
     if (pixels == nullptr)
     {
         SetLastError("[TextureImporter] Failed to load: " + resolvedPath.string());
         return texture;
+    }
+    if (texture.channels < 1 || texture.channels > 4)
+    {
+        stbi_image_free(pixels);
+        SetLastError("[TextureImporter] Unsupported channel layout in: " + resolvedPath.string());
+        return {};
     }
 
     const std::size_t byteCount = static_cast<std::size_t>(texture.width) *
@@ -331,6 +400,7 @@ void AssetImporter::ImportTexture(const std::string& path)
     std::cout << "[TextureImporter] Loaded " << path << " ("
         << texture.width << "x" << texture.height << ", "
         << texture.channels << " channels)\n";
+    AddDiagnostic("[TextureImporter] Loaded " + NormalizeProjectRelativePath(ResolveProjectPath(path)));
 
     const std::filesystem::path src = ResolveProjectPath(path);
     if (CopyIntoProject(src, GetImportTargetFolder("Textures")))
@@ -338,22 +408,48 @@ void AssetImporter::ImportTexture(const std::string& path)
         std::cout << "[AssetImporter] Imported to "
             << NormalizeProjectRelativePath(GetImportTargetFolder("Textures") / src.filename())
             << "\n";
+        AddDiagnostic("[AssetImporter] Imported texture to " +
+            NormalizeProjectRelativePath(GetImportTargetFolder("Textures") / src.filename()));
     }
 }
 
 void AssetImporter::ImportAudio(const std::string& path)
 {
     ClearLastError();
+    const std::filesystem::path source = ResolveProjectPath(path);
+    if (!std::filesystem::exists(source))
+    {
+        SetLastError("[AudioImporter] Audio source file not found: " + path);
+        return;
+    }
+    if (!ValidateExtension(source, kAudioExtensions, "audio"))
+    {
+        return;
+    }
     if (!EnsureAudioEngine())
     {
         SetLastError("[AudioImporter] Cannot play audio - engine not initialized.");
         return;
     }
 
-    const std::filesystem::path source = ResolveProjectPath(path);
-    if (std::filesystem::exists(source))
+    ma_sound previewSound{};
+    const ma_result initResult = ma_sound_init_from_file(
+        &gAudioEngine,
+        source.string().c_str(),
+        MA_SOUND_FLAG_DECODE,
+        nullptr,
+        nullptr,
+        &previewSound);
+    if (initResult != MA_SUCCESS)
     {
-        CopyIntoProject(source, GetImportTargetFolder("Audio"));
+        SetLastError("[AudioImporter] Failed to decode sound: " + source.string());
+        return;
+    }
+    ma_sound_uninit(&previewSound);
+
+    if (!CopyIntoProject(source, GetImportTargetFolder("Audio")))
+    {
+        return;
     }
 
     const ma_result result = ma_engine_play_sound(&gAudioEngine, source.string().c_str(), nullptr);
@@ -364,6 +460,8 @@ void AssetImporter::ImportAudio(const std::string& path)
     else
     {
         std::cout << "[AudioImporter] Playing: " << NormalizeProjectRelativePath(source) << "\n";
+        AddDiagnostic("[AudioImporter] Imported audio " +
+            NormalizeProjectRelativePath(GetImportTargetFolder("Audio") / source.filename()));
     }
 }
 
@@ -381,6 +479,16 @@ ma_engine* AssetImporter::GetAudioEngine()
 const std::string& AssetImporter::GetLastError()
 {
     return gLastError;
+}
+
+const std::vector<std::string>& AssetImporter::GetDiagnostics()
+{
+    return gDiagnostics;
+}
+
+void AssetImporter::ClearDiagnostics()
+{
+    gDiagnostics.clear();
 }
 
 void AssetImporter::ClearLastError()

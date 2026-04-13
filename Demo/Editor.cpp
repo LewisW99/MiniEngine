@@ -4,7 +4,10 @@
 #include <cctype>
 #include <string>
 #include <algorithm>
+#include <unordered_set>
 #include <filesystem>
+#include <fstream>
+#include <optional>
 #ifdef _WIN32
 #define NOMINMAX
 #include <Windows.h>
@@ -15,12 +18,14 @@
 #include "../Engine/AssetDatabase/AssetImporter.h"
 #include "../Engine/Components/AudioSourceComponent.h"
 #include "../Engine/Components/AnimationComponent.h"
+#include "../Engine/Components/DialogueComponent.h"
 #include "../Engine/Components/LightComponent.h"
 #include "../Engine/Components/MaterialComponent.h"
 #include "../Engine/Components/MeshComponent.h"
 #include "../Engine/Components/NavAgentComponent.h"
 #include "../Engine/Components/NavWaypointComponent.h"
 #include "../Engine/Components/RuntimeUIComponent.h"
+#include "../Engine/Components/TagComponent.h"
 #include "../Engine/ImGuizmo.h"
 #include "../Engine/PrefabSerializer.h"
 #include "../Engine/Rendering/ResourceManager.h"
@@ -34,6 +39,7 @@
 #include "../Engine/EditorConsole.h"
 #include "../Engine/InputSystem.h"
 #include "../Engine/Scripting/ScriptComponent.h"
+#include "../Engine/Systems/UISystem.h"
 #include "Scripting/ScriptAPI.h"
 #include "../Engine/Renderer.h"
 
@@ -65,6 +71,149 @@ namespace
     constexpr const char* kAssetPayloadAudio = "ASSET_AUDIO_PATH";
     constexpr const char* kAssetPayloadScript = "ASSET_SCRIPT_PATH";
     constexpr const char* kAssetPayloadPrefab = "ASSET_PREFAB_PATH";
+    constexpr const char* kSceneTemplateNames[] = { "Empty", "Main Menu" };
+    constexpr const char* kRuntimeUIArgTypeNames[] = { "None", "String", "Bool", "Int" };
+    constexpr const char* kRuntimeUIButtonArgTypeNames[] = { "String", "Bool", "Int" };
+
+    struct LuaDiscoveredFunction
+    {
+        std::string name;
+        std::string argumentName;
+        bool supportsButtonBinding = false;
+        bool requiresArgument = false;
+    };
+
+    std::string TrimCopy(std::string value)
+    {
+        const auto notWhitespace = [](unsigned char character)
+        {
+            return !std::isspace(character);
+        };
+
+        value.erase(value.begin(), std::find_if(value.begin(), value.end(), notWhitespace));
+        value.erase(std::find_if(value.rbegin(), value.rend(), notWhitespace).base(), value.end());
+        return value;
+    }
+
+    std::vector<std::string> SplitLuaParameters(const std::string& parameterList)
+    {
+        std::vector<std::string> parameters;
+        std::size_t start = 0;
+        while (start <= parameterList.size())
+        {
+            const std::size_t comma = parameterList.find(',', start);
+            const std::string token = comma == std::string::npos
+                ? parameterList.substr(start)
+                : parameterList.substr(start, comma - start);
+            const std::string trimmed = TrimCopy(token);
+            if (!trimmed.empty())
+            {
+                parameters.push_back(trimmed);
+            }
+
+            if (comma == std::string::npos)
+            {
+                break;
+            }
+
+            start = comma + 1;
+        }
+
+        return parameters;
+    }
+
+    std::vector<LuaDiscoveredFunction> DiscoverLuaFunctionsForButtons(const std::filesystem::path& scriptPath)
+    {
+        std::vector<LuaDiscoveredFunction> functions;
+        if (scriptPath.empty() || !std::filesystem::exists(scriptPath))
+        {
+            return functions;
+        }
+
+        std::ifstream file(scriptPath);
+        if (!file.is_open())
+        {
+            return functions;
+        }
+
+        std::unordered_set<std::string> seenNames;
+        std::string line;
+        while (std::getline(file, line))
+        {
+            const std::size_t commentPos = line.find("--");
+            const std::string uncommented = TrimCopy(line.substr(0, commentPos));
+            constexpr const char* functionPrefix = "function ";
+            if (uncommented.rfind(functionPrefix, 0) != 0)
+            {
+                continue;
+            }
+
+            const std::string declaration = uncommented.substr(std::char_traits<char>::length(functionPrefix));
+            const std::size_t openParen = declaration.find('(');
+            const std::size_t closeParen = declaration.find(')', openParen == std::string::npos ? 0 : openParen + 1);
+            if (openParen == std::string::npos || closeParen == std::string::npos || closeParen <= openParen)
+            {
+                continue;
+            }
+
+            const std::string functionName = TrimCopy(declaration.substr(0, openParen));
+            if (functionName.empty() ||
+                functionName.find('.') != std::string::npos ||
+                functionName.find(':') != std::string::npos ||
+                seenNames.find(functionName) != seenNames.end())
+            {
+                continue;
+            }
+
+            std::vector<std::string> parameters = SplitLuaParameters(
+                declaration.substr(openParen + 1, closeParen - openParen - 1));
+            if (!parameters.empty() && parameters.front() == "self")
+            {
+                parameters.erase(parameters.begin());
+            }
+
+            LuaDiscoveredFunction function;
+            function.name = functionName;
+            function.requiresArgument = parameters.size() == 1;
+            function.argumentName = function.requiresArgument ? parameters.front() : "";
+            function.supportsButtonBinding = parameters.size() <= 1;
+            if (!function.supportsButtonBinding)
+            {
+                continue;
+            }
+
+            seenNames.insert(function.name);
+            functions.push_back(function);
+        }
+
+        return functions;
+    }
+
+    std::filesystem::path ResolveProjectScriptPath(const std::string& scriptPath)
+    {
+        if (scriptPath.empty() || !ProjectManager::HasActiveProject())
+        {
+            return {};
+        }
+
+        const auto& project = ProjectManager::GetActive();
+        return (project.rootPath / scriptPath).lexically_normal();
+    }
+
+    const LuaDiscoveredFunction* FindLuaFunction(
+        const std::vector<LuaDiscoveredFunction>& functions,
+        const std::string& functionName)
+    {
+        for (const auto& function : functions)
+        {
+            if (function.name == functionName)
+            {
+                return &function;
+            }
+        }
+
+        return nullptr;
+    }
 
     const char* GetPayloadType(const AssetType type)
     {
@@ -100,6 +249,7 @@ namespace
         RemoveComponentIfPresent<MeshComponent>(components, entity);
         RemoveComponentIfPresent<MaterialComponent>(components, entity);
         RemoveComponentIfPresent<LightComponent>(components, entity);
+        RemoveComponentIfPresent<TagComponent>(components, entity);
         RemoveComponentIfPresent<AnimationComponent>(components, entity);
         RemoveComponentIfPresent<PhysicsComponent>(components, entity);
         RemoveComponentIfPresent<ColliderComponent>(components, entity);
@@ -107,6 +257,7 @@ namespace
         RemoveComponentIfPresent<NavWaypointComponent>(components, entity);
         RemoveComponentIfPresent<RuntimeUIComponent>(components, entity);
         RemoveComponentIfPresent<ScriptComponent>(components, entity);
+        RemoveComponentIfPresent<DialogueComponent>(components, entity);
         RemoveComponentIfPresent<AudioSourceComponent>(components, entity);
         RemoveComponentIfPresent<PlayerControllerComponent>(components, entity);
         RemoveComponentIfPresent<CameraFollowComponent>(components, entity);
@@ -127,6 +278,7 @@ namespace
         CloneComponentIfPresent<MeshComponent>(components, source, dest);
         CloneComponentIfPresent<MaterialComponent>(components, source, dest);
         CloneComponentIfPresent<LightComponent>(components, source, dest);
+        CloneComponentIfPresent<TagComponent>(components, source, dest);
         CloneComponentIfPresent<AnimationComponent>(components, source, dest);
         CloneComponentIfPresent<PhysicsComponent>(components, source, dest);
         CloneComponentIfPresent<ColliderComponent>(components, source, dest);
@@ -134,9 +286,28 @@ namespace
         CloneComponentIfPresent<NavWaypointComponent>(components, source, dest);
         CloneComponentIfPresent<RuntimeUIComponent>(components, source, dest);
         CloneComponentIfPresent<ScriptComponent>(components, source, dest);
+        CloneComponentIfPresent<DialogueComponent>(components, source, dest);
         CloneComponentIfPresent<AudioSourceComponent>(components, source, dest);
         CloneComponentIfPresent<PlayerControllerComponent>(components, source, dest);
         CloneComponentIfPresent<CameraFollowComponent>(components, source, dest);
+    }
+
+    std::string BuildMainMenuControllerScript()
+    {
+        return
+            "-- Auto-generated Main Menu controller\n"
+            "function OnPlayButtonClicked(self, target)\n"
+            "    local targetType = type(target)\n"
+            "    if targetType == \"number\" then\n"
+            "        Scene.LoadByBuildIndex(target)\n"
+            "        return\n"
+            "    end\n"
+            "    if targetType == \"string\" and target ~= \"\" then\n"
+            "        Scene.LoadByName(target)\n"
+            "        return\n"
+            "    end\n"
+            "    print(\"Main Menu button has no valid target configured.\")\n"
+            "end\n";
     }
 }
 
@@ -674,6 +845,216 @@ Entity Editor::CreateDirectionalLightEntity(const Vec3* spawnPosition, const boo
     return entity;
 }
 
+bool Editor::PopulateSceneTemplate(const std::filesystem::path& scenePath, const int templateIndex)
+{
+    if (scenePath.empty() || !ProjectManager::HasActiveProject())
+    {
+        std::cerr << "[SceneTemplate] Missing active project or scene path for template generation.\n";
+        return false;
+    }
+
+    if (templateIndex == 0)
+    {
+        return true;
+    }
+
+    EntityManager templateEntities(32);
+    ComponentManager templateComponents;
+    EntityMeta templateMeta;
+    SceneSerializer::RegisterSceneComponentTypes(templateComponents);
+
+    if (templateIndex == 1)
+    {
+        const std::string canvasId = "MainMenuCanvas";
+        std::filesystem::path controllerScriptPath;
+        {
+            const auto& project = ProjectManager::GetActive();
+            const std::filesystem::path scriptDir = project.rootPath / "Assets" / "Scripts";
+            std::error_code ec;
+            std::filesystem::create_directories(scriptDir, ec);
+            controllerScriptPath = scriptDir / (scenePath.stem().string() + "_MainMenu.lua");
+            std::ofstream scriptFile(controllerScriptPath);
+            if (scriptFile.is_open())
+            {
+                scriptFile << BuildMainMenuControllerScript();
+            }
+            else
+            {
+                std::cerr << "[SceneTemplate] Failed to create Main Menu controller script: "
+                    << controllerScriptPath << "\n";
+            }
+        }
+
+        std::optional<std::string> targetSceneName;
+        int targetBuildIndex = -1;
+        const auto& scenes = ProjectManager::GetScenes();
+        const auto& buildScenes = ProjectManager::GetBuildScenes();
+        for (const auto& buildScene : buildScenes)
+        {
+            if (!buildScene.included)
+            {
+                continue;
+            }
+
+            for (const auto& projectScene : scenes)
+            {
+                if (projectScene.id == buildScene.sceneId && projectScene.path != scenePath)
+                {
+                    targetSceneName = projectScene.name;
+                    targetBuildIndex = buildScene.buildIndex;
+                    break;
+                }
+            }
+
+            if (targetSceneName.has_value())
+            {
+                break;
+            }
+        }
+
+        const Entity canvas = templateEntities.CreateEntity();
+        templateMeta.SetName(canvas, "Main Menu Canvas");
+        RuntimeUIComponent canvasUi;
+        canvasUi.type = RuntimeUIElementType::Canvas;
+        canvasUi.isCanvasRoot = true;
+        canvasUi.canvasId = canvasId;
+        canvasUi.width = 1280.0f;
+        canvasUi.height = 720.0f;
+        templateComponents.AddComponent(canvas, canvasUi);
+
+        const Entity title = templateEntities.CreateEntity();
+        templateMeta.SetName(title, "Title Text");
+        RuntimeUIComponent titleUi;
+        titleUi.type = RuntimeUIElementType::Text;
+        titleUi.canvasId = canvasId;
+        titleUi.anchor = RuntimeUIAnchor::TopCenter;
+        titleUi.text = "Main Menu";
+        titleUi.offsetX = 0.0f;
+        titleUi.offsetY = 72.0f;
+        titleUi.width = 420.0f;
+        titleUi.height = 64.0f;
+        templateComponents.AddComponent(title, titleUi);
+
+        const Entity playButton = templateEntities.CreateEntity();
+        templateMeta.SetName(playButton, "Play Button");
+        RuntimeUIComponent buttonUi;
+        buttonUi.type = RuntimeUIElementType::Button;
+        buttonUi.canvasId = canvasId;
+        buttonUi.anchor = RuntimeUIAnchor::Center;
+        buttonUi.text = "Play";
+        buttonUi.luaFunction = "OnPlayButtonClicked";
+        buttonUi.width = 260.0f;
+        buttonUi.height = 56.0f;
+        if (targetBuildIndex >= 0)
+        {
+            buttonUi.luaArgumentType = RuntimeUIArgumentType::Int;
+            buttonUi.luaIntArgument = targetBuildIndex;
+        }
+        else if (targetSceneName.has_value())
+        {
+            buttonUi.luaArgumentType = RuntimeUIArgumentType::String;
+            buttonUi.luaStringArgument = *targetSceneName;
+        }
+        templateComponents.AddComponent(playButton, buttonUi);
+
+        if (!controllerScriptPath.empty())
+        {
+            ScriptComponent script;
+            script.ScriptPath = std::filesystem::relative(controllerScriptPath, ProjectManager::GetActive().rootPath).generic_string();
+            templateComponents.AddComponent(playButton, script);
+        }
+    }
+
+    SceneSerializer::Save(scenePath.string(), templateEntities, templateComponents, templateMeta);
+    return true;
+}
+
+bool Editor::DrawRuntimeUIOverlay(const ImVec2& sceneImageMin, const ImVec2& sceneImageMax, const int viewportWidth, const int viewportHeight)
+{
+    if (viewportWidth <= 0 || viewportHeight <= 0)
+    {
+        return false;
+    }
+
+    if (engineMode == EngineMode::Play)
+    {
+        return UISystem::DrawInRegion(*entityMgr, *compMgr, sceneImageMin, viewportWidth, viewportHeight);
+    }
+
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    const ImVec2 mousePos = ImGui::GetMousePos();
+    static Entity draggingEntity{};
+    static ImVec2 lastMousePos{};
+    bool consumedInput = false;
+
+    for (EntityID id = 0; id < entityMgr->GetMaxEntities(); ++id)
+    {
+        const Entity entity{ id };
+        if (!entityMgr->IsAlive(entity) || !compMgr->HasComponent<RuntimeUIComponent>(entity))
+        {
+            continue;
+        }
+
+        auto& ui = compMgr->GetComponent<RuntimeUIComponent>(entity);
+        if (!ui.visible || !ui.isScreenUI)
+        {
+            continue;
+        }
+
+        const bool isCanvas = ui.isCanvasRoot || ui.type == RuntimeUIElementType::Canvas;
+        ImVec2 min = sceneImageMin;
+        ImVec2 max = sceneImageMax;
+        if (!isCanvas)
+        {
+            const auto rect = UISystem::GetRectForEditor(ui, viewportWidth, viewportHeight);
+            min = ImVec2(sceneImageMin.x + rect.position.x, sceneImageMin.y + rect.position.y);
+            max = ImVec2(min.x + rect.size.x, min.y + rect.size.y);
+        }
+
+        const bool hovered = mousePos.x >= min.x && mousePos.x <= max.x && mousePos.y >= min.y && mousePos.y <= max.y;
+        const bool isSelected = entity.id == selectedEntity.id;
+        const ImU32 outlineColor = isSelected
+            ? IM_COL32(255, 220, 80, 255)
+            : IM_COL32(90, 180, 255, 200);
+        drawList->AddRect(min, max, outlineColor, 0.0f, 0, isSelected ? 2.5f : 1.5f);
+        drawList->AddText(ImVec2(min.x + 4.0f, min.y + 4.0f), outlineColor, meta.GetName(entity).c_str());
+
+        if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+        {
+            selectedEntity = entity;
+            draggingEntity = entity;
+            lastMousePos = mousePos;
+            consumedInput = true;
+        }
+    }
+
+    if (draggingEntity && (!entityMgr->IsAlive(draggingEntity) || !compMgr->HasComponent<RuntimeUIComponent>(draggingEntity)))
+    {
+        draggingEntity = {};
+    }
+
+    if (draggingEntity && ImGui::IsMouseDown(ImGuiMouseButton_Left) &&
+        compMgr->HasComponent<RuntimeUIComponent>(draggingEntity))
+    {
+        auto& ui = compMgr->GetComponent<RuntimeUIComponent>(draggingEntity);
+        if (!ui.isCanvasRoot && ui.type != RuntimeUIElementType::Canvas)
+        {
+            const ImVec2 delta(mousePos.x - lastMousePos.x, mousePos.y - lastMousePos.y);
+            ui.offsetX += delta.x;
+            ui.offsetY += delta.y;
+            consumedInput = consumedInput || (delta.x != 0.0f || delta.y != 0.0f);
+        }
+
+        lastMousePos = mousePos;
+    }
+    else if (!ImGui::IsMouseDown(ImGuiMouseButton_Left))
+    {
+        draggingEntity = {};
+    }
+
+    return consumedInput;
+}
+
 void Editor::EnsureDefaultDirectionalLight()
 {
     for (uint32_t id = 0; id < entityMgr->GetMaxEntities(); ++id)
@@ -785,18 +1166,19 @@ void Editor::Draw()
         statusTimer = 2.0f;
     }
 
+    static char newSceneNameBuffer[128] = "Main";
+    static int newSceneTemplateIndex = 0;
+    static bool requestSceneCreatePopup = false;
+
 // Top Bar
     if (ImGui::BeginMainMenuBar())
     {
         if (ImGui::BeginMenu("File"))
         {
-            if (ImGui::MenuItem("New Scene"))
+            if (ImGui::MenuItem("Add Scene..."))
             {
-                entityMgr->Clear();
-                compMgr->Clear();
-                meta.Clear();
-                selectedEntity = {};
-                EnsureDefaultDirectionalLight();
+                newSceneTemplateIndex = 0;
+                requestSceneCreatePopup = true;
             }
 
             if (ImGui::MenuItem("Save Scene", "Ctrl+S"))
@@ -811,16 +1193,6 @@ void Editor::Draw()
             if (selectedEntity && entityMgr->IsAlive(selectedEntity) && ImGui::MenuItem("Save Selected As Prefab"))
             {
                 SaveSelectedAsPrefab();
-            }
-
-            if (ImGui::MenuItem("Set Current Scene As Startup"))
-            {
-                ProjectManager::SetStartupScene(project.scenePath);
-            }
-
-            if (ImGui::MenuItem("Build Prototype"))
-            {
-                PackageProject();
             }
 
             if (ImGui::MenuItem("Close Project"))
@@ -943,12 +1315,89 @@ void Editor::Draw()
             ImGui::EndMenu();
         }
 
+        if (ImGui::BeginMenu("Scene"))
+        {
+            if (ImGui::MenuItem("Add Scene..."))
+            {
+                newSceneTemplateIndex = 0;
+                requestSceneCreatePopup = true;
+            }
+
+            ImGui::EndMenu();
+        }
+
+        if (ImGui::BeginMenu("Build"))
+        {
+            if (ImGui::MenuItem("Build Settings"))
+            {
+                showBuildSettingsPanel = true;
+            }
+
+            if (ImGui::MenuItem("Build Prototype"))
+            {
+                PackageProject();
+            }
+
+            ImGui::EndMenu();
+        }
+
         if(ImGui::Button("Play"))
         {
             TogglePlayMode();
 		}
 
         ImGui::EndMainMenuBar();
+    }
+
+    if (requestSceneCreatePopup)
+    {
+        ImGui::OpenPopup("Create Scene");
+        requestSceneCreatePopup = false;
+    }
+
+    if (ImGui::BeginPopupModal("Create Scene", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+    {
+        ImGui::InputText("Scene Name", newSceneNameBuffer, IM_ARRAYSIZE(newSceneNameBuffer));
+        ImGui::Combo("Scene Type", &newSceneTemplateIndex, kSceneTemplateNames, IM_ARRAYSIZE(kSceneTemplateNames));
+
+        const bool canCreateScene = newSceneNameBuffer[0] != '\0';
+        if (!canCreateScene)
+        {
+            ImGui::BeginDisabled();
+        }
+
+        if (ImGui::Button("Create", ImVec2(120.0f, 0.0f)))
+        {
+            std::filesystem::path createdScenePath;
+            if (ProjectManager::CreateScene(newSceneNameBuffer, &createdScenePath))
+            {
+                PopulateSceneTemplate(createdScenePath, newSceneTemplateIndex);
+                LoadActiveProjectScene();
+                RefreshAssetDatabase();
+                statusText = "Created scene: " + createdScenePath.filename().string();
+                statusTimer = 2.0f;
+            }
+
+            strcpy_s(newSceneNameBuffer, "Main");
+            newSceneTemplateIndex = 0;
+            ImGui::CloseCurrentPopup();
+        }
+
+        if (!canCreateScene)
+        {
+            ImGui::EndDisabled();
+        }
+
+        ImGui::SameLine();
+
+        if (ImGui::Button("Cancel", ImVec2(120.0f, 0.0f)))
+        {
+            strcpy_s(newSceneNameBuffer, "Main");
+            newSceneTemplateIndex = 0;
+            ImGui::CloseCurrentPopup();
+        }
+
+        ImGui::EndPopup();
     }
 
 
@@ -967,8 +1416,12 @@ void Editor::Draw()
     DrawHierarchy();
     DrawSceneView();
     DrawDetails();
-    DrawProjectSettingsPanel();
+    if (showBuildSettingsPanel)
+    {
+        DrawProjectSettingsPanel();
+    }
 	DrawAssetsPanel();
+    DrawImporterDiagnosticsPanel();
     DrawScriptEditor();
     DrawCreateScriptPopup();
 	DrawConsoleWindow();
@@ -1057,6 +1510,13 @@ void Editor::DrawSceneView()
             }
 
             ImGui::EndDragDropTarget();
+        }
+
+        const bool consumedByRuntimeUI = DrawRuntimeUIOverlay(sceneImageMin, sceneImageMax, texW, texH);
+        if (consumedByRuntimeUI)
+        {
+            ImGui::End();
+            return;
         }
     }
     else
@@ -1375,6 +1835,32 @@ void Editor::DrawDetails()
         ImGui::DragFloat3("Scale", &transform.scale.x, 0.1f, 0.01f, 10.0f);
     }
 
+    bool hasTag =
+        compMgr->HasComponent<TagComponent>(selectedEntity);
+
+    if (ImGui::Checkbox("Tag", &hasTag))
+    {
+        if (hasTag)
+        {
+            compMgr->AddComponent(selectedEntity, TagComponent{});
+        }
+        else
+        {
+            RemoveComponentIfPresent<TagComponent>(*compMgr, selectedEntity);
+        }
+    }
+
+    if (hasTag && compMgr->HasComponent<TagComponent>(selectedEntity))
+    {
+        auto& tag = compMgr->GetComponent<TagComponent>(selectedEntity);
+        char tagBuffer[128] = {};
+        strncpy_s(tagBuffer, tag.tag.c_str(), sizeof(tagBuffer) - 1);
+        if (ImGui::InputText("Tag Value", tagBuffer, IM_ARRAYSIZE(tagBuffer)))
+        {
+            tag.tag = tagBuffer;
+        }
+    }
+
     bool hasMesh =
         compMgr->HasComponent<MeshComponent>(selectedEntity);
 
@@ -1645,6 +2131,28 @@ void Editor::DrawDetails()
         );
 
         ImGui::Checkbox("Static", &collider.isStatic);
+        static const char* collisionModeNames[] = { "None", "Blocking", "Trigger" };
+        int collisionMode = static_cast<int>(collider.mode);
+        if (ImGui::Combo("Collision Mode", &collisionMode, collisionModeNames, IM_ARRAYSIZE(collisionModeNames)))
+        {
+            collider.mode = static_cast<CollisionMode>(collisionMode);
+        }
+        int collisionLayer = static_cast<int>(collider.layer);
+        if (ImGui::InputInt("Collision Layer", &collisionLayer))
+        {
+            collider.layer = static_cast<std::uint32_t>(std::max(0, collisionLayer));
+        }
+        int collisionMask = static_cast<int>(collider.mask);
+        if (ImGui::InputInt("Collision Mask", &collisionMask))
+        {
+            collider.mask = static_cast<std::uint32_t>(std::max(0, collisionMask));
+        }
+        if (compMgr->HasComponent<PhysicsComponent>(selectedEntity))
+        {
+            const auto& physics = compMgr->GetComponent<PhysicsComponent>(selectedEntity);
+            ImGui::TextDisabled("Active overlaps: %d", static_cast<int>(physics.overlappingEntities.size()));
+            ImGui::TextDisabled("Active triggers: %d", static_cast<int>(physics.triggerEntities.size()));
+        }
 
         ImGui::Unindent();
     }
@@ -1744,6 +2252,67 @@ void Editor::DrawDetails()
             ScriptComponent sc;
             sc.ScriptPath = "";
             compMgr->AddComponent(selectedEntity, sc);
+        }
+    }
+
+    bool hasDialogue = compMgr->HasComponent<DialogueComponent>(selectedEntity);
+    if (ImGui::Checkbox("Dialogue", &hasDialogue))
+    {
+        if (hasDialogue)
+        {
+            compMgr->AddComponent(selectedEntity, DialogueComponent{});
+        }
+        else
+        {
+            RemoveComponentIfPresent<DialogueComponent>(*compMgr, selectedEntity);
+        }
+    }
+
+    if (hasDialogue && compMgr->HasComponent<DialogueComponent>(selectedEntity))
+    {
+        auto& dialogue = compMgr->GetComponent<DialogueComponent>(selectedEntity);
+        ImGui::SeparatorText("Dialogue");
+
+        if (ImGui::Button("Add Dialogue Entry"))
+        {
+            DialogueEntry entry;
+            entry.id = dialogue.AllocateEntryId();
+            entry.text = "New dialogue line";
+            dialogue.entries.push_back(entry);
+        }
+
+        for (std::size_t i = 0; i < dialogue.entries.size(); ++i)
+        {
+            auto& entry = dialogue.entries[i];
+            ImGui::PushID(entry.id);
+            ImGui::Text("Entry %d", entry.id);
+            ImGui::SameLine();
+            if (i > 0 && ImGui::SmallButton("Up"))
+            {
+                std::swap(dialogue.entries[i], dialogue.entries[i - 1]);
+            }
+            ImGui::SameLine();
+            if (i + 1 < dialogue.entries.size() && ImGui::SmallButton("Down"))
+            {
+                std::swap(dialogue.entries[i], dialogue.entries[i + 1]);
+            }
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Remove"))
+            {
+                dialogue.entries.erase(dialogue.entries.begin() + static_cast<std::ptrdiff_t>(i));
+                ImGui::PopID();
+                break;
+            }
+
+            char buffer[512] = {};
+            strncpy_s(buffer, entry.text.c_str(), sizeof(buffer) - 1);
+            if (ImGui::InputTextMultiline("Text", buffer, IM_ARRAYSIZE(buffer), ImVec2(-1.0f, 60.0f)))
+            {
+                entry.text = buffer;
+            }
+
+            ImGui::Separator();
+            ImGui::PopID();
         }
     }
 
@@ -1859,28 +2428,184 @@ void Editor::DrawDetails()
     if (hasRuntimeUI && compMgr->HasComponent<RuntimeUIComponent>(selectedEntity))
     {
         auto& ui = compMgr->GetComponent<RuntimeUIComponent>(selectedEntity);
-        static const char* uiTypeNames[] = { "Text", "Button", "Image" };
+        static const char* uiTypeNames[] = { "Canvas", "Text", "Button", "Image" };
         static const char* uiAnchorNames[] = { "Top Left", "Top Center", "Top Right", "Center", "Bottom Left", "Bottom Center", "Bottom Right" };
         int uiType = static_cast<int>(ui.type);
         int uiAnchor = static_cast<int>(ui.anchor);
         ImGui::SeparatorText("Runtime UI");
+        ImGui::Checkbox("Is Screen UI", &ui.isScreenUI);
+        ImGui::Checkbox("Canvas Root", &ui.isCanvasRoot);
         if (ImGui::Combo("UI Type", &uiType, uiTypeNames, IM_ARRAYSIZE(uiTypeNames)))
         {
             ui.type = static_cast<RuntimeUIElementType>(uiType);
         }
-        if (ImGui::Combo("Anchor", &uiAnchor, uiAnchorNames, IM_ARRAYSIZE(uiAnchorNames)))
+        if (!ui.isCanvasRoot && ui.type != RuntimeUIElementType::Canvas &&
+            ImGui::Combo("Anchor", &uiAnchor, uiAnchorNames, IM_ARRAYSIZE(uiAnchorNames)))
         {
             ui.anchor = static_cast<RuntimeUIAnchor>(uiAnchor);
         }
+        char canvasIdBuffer[128] = {};
+        strncpy_s(canvasIdBuffer, ui.canvasId.c_str(), sizeof(canvasIdBuffer) - 1);
+        if (ImGui::InputText("Canvas Id", canvasIdBuffer, IM_ARRAYSIZE(canvasIdBuffer)))
+        {
+            ui.canvasId = canvasIdBuffer;
+        }
         char uiTextBuffer[260] = {};
         strncpy_s(uiTextBuffer, ui.text.c_str(), sizeof(uiTextBuffer) - 1);
-        if (ImGui::InputText("UI Text", uiTextBuffer, IM_ARRAYSIZE(uiTextBuffer)))
+        const char* textLabel = ui.type == RuntimeUIElementType::Button ? "Button Label" : "UI Text";
+        if (ImGui::InputText(textLabel, uiTextBuffer, IM_ARRAYSIZE(uiTextBuffer)))
         {
             ui.text = uiTextBuffer;
+        }
+        if (ui.type == RuntimeUIElementType::Button)
+        {
+            const ScriptComponent* script = compMgr->HasComponent<ScriptComponent>(selectedEntity)
+                ? &compMgr->GetComponent<ScriptComponent>(selectedEntity)
+                : nullptr;
+            const std::filesystem::path scriptPath = script != nullptr
+                ? ResolveProjectScriptPath(script->ScriptPath)
+                : std::filesystem::path{};
+            const std::vector<LuaDiscoveredFunction> callableFunctions = DiscoverLuaFunctionsForButtons(scriptPath);
+            const LuaDiscoveredFunction* selectedFunction = FindLuaFunction(callableFunctions, ui.luaFunction);
+
+            if (!ui.luaFunction.empty() && selectedFunction == nullptr)
+            {
+                ui.luaFunction.clear();
+                ui.luaArgumentType = RuntimeUIArgumentType::None;
+            }
+
+            const bool hasScriptComponent = script != nullptr;
+            const bool hasScriptPath = hasScriptComponent && !script->ScriptPath.empty();
+            const bool hasCallableFunctions = !callableFunctions.empty();
+            const char* previewValue = ui.luaFunction.empty() ? "Select function" : ui.luaFunction.c_str();
+
+            ImGui::BeginDisabled(!hasScriptPath || !hasCallableFunctions);
+            if (ImGui::BeginCombo("On Click Function", previewValue))
+            {
+                const bool clearSelected = ui.luaFunction.empty();
+                if (ImGui::Selectable("None", clearSelected))
+                {
+                    ui.luaFunction.clear();
+                    ui.luaArgumentType = RuntimeUIArgumentType::None;
+                }
+
+                for (const auto& function : callableFunctions)
+                {
+                    const bool isSelected = ui.luaFunction == function.name;
+                    if (ImGui::Selectable(function.name.c_str(), isSelected))
+                    {
+                        ui.luaFunction = function.name;
+                        if (!function.requiresArgument)
+                        {
+                            ui.luaArgumentType = RuntimeUIArgumentType::None;
+                        }
+                    }
+
+                    if (isSelected)
+                    {
+                        ImGui::SetItemDefaultFocus();
+                    }
+                }
+
+                ImGui::EndCombo();
+            }
+            ImGui::EndDisabled();
+
+            if (!hasScriptComponent)
+            {
+                ImGui::TextDisabled("Attach a Script component to bind button callbacks.");
+            }
+            else if (!hasScriptPath)
+            {
+                ImGui::TextDisabled("Assign a Lua script path to enable button callbacks.");
+            }
+            else if (callableFunctions.empty())
+            {
+                ImGui::TextDisabled("No callable global functions found in the assigned Lua script.");
+                ImGui::TextDisabled("Supported signatures: function Foo(self) or function Foo(self, arg)");
+            }
+            else if (selectedFunction == nullptr && !ui.luaFunction.empty())
+            {
+                ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.25f, 1.0f), "Selected function is no longer present in the script.");
+            }
+
+            selectedFunction = FindLuaFunction(callableFunctions, ui.luaFunction);
+            if (selectedFunction != nullptr && selectedFunction->requiresArgument)
+            {
+                int argType = 0;
+                switch (ui.luaArgumentType)
+                {
+                case RuntimeUIArgumentType::Bool:
+                    argType = 1;
+                    break;
+                case RuntimeUIArgumentType::Int:
+                    argType = 2;
+                    break;
+                case RuntimeUIArgumentType::String:
+                case RuntimeUIArgumentType::None:
+                default:
+                    ui.luaArgumentType = RuntimeUIArgumentType::String;
+                    argType = 0;
+                    break;
+                }
+
+                const std::string argTypeLabel = selectedFunction->argumentName.empty()
+                    ? "Lua Arg Type"
+                    : "Lua Arg Type (" + selectedFunction->argumentName + ")";
+                if (ImGui::Combo(argTypeLabel.c_str(), &argType, kRuntimeUIButtonArgTypeNames, IM_ARRAYSIZE(kRuntimeUIButtonArgTypeNames)))
+                {
+                    ui.luaArgumentType = argType == 1
+                        ? RuntimeUIArgumentType::Bool
+                        : argType == 2
+                        ? RuntimeUIArgumentType::Int
+                        : RuntimeUIArgumentType::String;
+                }
+
+                if (ui.luaArgumentType == RuntimeUIArgumentType::String)
+                {
+                    char stringArgBuffer[260] = {};
+                    strncpy_s(stringArgBuffer, ui.luaStringArgument.c_str(), sizeof(stringArgBuffer) - 1);
+                    if (ImGui::InputText("String Arg", stringArgBuffer, IM_ARRAYSIZE(stringArgBuffer)))
+                    {
+                        ui.luaStringArgument = stringArgBuffer;
+                    }
+                }
+                else if (ui.luaArgumentType == RuntimeUIArgumentType::Bool)
+                {
+                    ImGui::Checkbox("Bool Arg", &ui.luaBoolArgument);
+                }
+                else if (ui.luaArgumentType == RuntimeUIArgumentType::Int)
+                {
+                    ImGui::InputInt("Int Arg", &ui.luaIntArgument);
+                }
+            }
+            else
+            {
+                ui.luaArgumentType = RuntimeUIArgumentType::None;
+            }
+
+            ImGui::ColorEdit4("Button Color", &ui.buttonColor.r);
+            ImGui::ColorEdit4("Button Hovered", &ui.buttonHoveredColor.r);
+            ImGui::ColorEdit4("Button Pressed", &ui.buttonPressedColor.r);
+            ImGui::ColorEdit4("Text Color", &ui.textColor.r);
+        }
+        else if (ui.type == RuntimeUIElementType::Text)
+        {
+            ImGui::ColorEdit4("Text Color", &ui.textColor.r);
+        }
+        else if (ui.type == RuntimeUIElementType::Image)
+        {
+            char texturePathBuffer[260] = {};
+            strncpy_s(texturePathBuffer, ui.texturePath.c_str(), sizeof(texturePathBuffer) - 1);
+            if (ImGui::InputText("Texture Path", texturePathBuffer, IM_ARRAYSIZE(texturePathBuffer)))
+            {
+                ui.texturePath = texturePathBuffer;
+            }
         }
         ImGui::DragFloat2("UI Offset", &ui.offsetX, 1.0f);
         ImGui::DragFloat2("UI Size", &ui.width, 1.0f, 1.0f, 1024.0f);
         ImGui::Checkbox("Visible", &ui.visible);
+        ImGui::TextDisabled("Drag selected UI elements directly in the Scene view to place them.");
     }
 
     if (compMgr->HasComponent<PlayerControllerComponent>(selectedEntity))
@@ -2032,7 +2757,7 @@ void Editor::DrawAssetsPanel()
                 break;
             }
             ofn.nFilterIndex = 1;
-            ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+            ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
 
             if (GetOpenFileNameA(&ofn))
             {
@@ -2133,7 +2858,17 @@ void Editor::DrawAssetsPanel()
 
         if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
         {
-            if (a.type == AssetType::Model || a.type == AssetType::Script || a.type == AssetType::Prefab)
+            if (a.type == AssetType::Scene)
+            {
+                const std::filesystem::path scenePath = ProjectManager::GetActive().rootPath / a.path;
+                if (ProjectManager::OpenScene(scenePath))
+                {
+                    LoadActiveProjectScene();
+                    statusText = "Opened scene: " + scenePath.filename().string();
+                    statusTimer = 2.0f;
+                }
+            }
+            else if (a.type == AssetType::Model || a.type == AssetType::Script || a.type == AssetType::Prefab)
             {
                 CreateEntityFromAsset(a);
             }
@@ -2233,6 +2968,7 @@ void Editor::BeginDockSpace()
         ImGui::DockBuilderDockWindow("Details", dockRight);
         ImGui::DockBuilderDockWindow("Console", dockBottom);
         ImGui::DockBuilderDockWindow("Assets", dockBottom);
+        ImGui::DockBuilderDockWindow("Importer Diagnostics", dockBottom);
         ImGui::DockBuilderDockWindow("Script Editor", dockMain);
         ImGui::DockBuilderDockWindow("Scene", dockMain);
 
@@ -2784,9 +3520,46 @@ void Editor::DrawConsoleWindow()
     ImGui::End();
 }
 
+void Editor::DrawImporterDiagnosticsPanel()
+{
+    ImGui::Begin("Importer Diagnostics");
+
+    const auto& diagnostics = AssetImporter::GetDiagnostics();
+    ImGui::TextDisabled("Recent import activity");
+    ImGui::SameLine();
+    if (ImGui::Button("Clear"))
+    {
+        AssetImporter::ClearDiagnostics();
+    }
+    ImGui::Separator();
+
+    if (diagnostics.empty())
+    {
+        ImGui::TextDisabled("No importer diagnostics yet.");
+    }
+    else
+    {
+        for (auto it = diagnostics.rbegin(); it != diagnostics.rend(); ++it)
+        {
+            const bool isError = it->find("Failed") != std::string::npos ||
+                it->find("Unsupported") != std::string::npos;
+            if (isError)
+            {
+                ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.45f, 1.0f), "%s", it->c_str());
+            }
+            else
+            {
+                ImGui::TextWrapped("%s", it->c_str());
+            }
+        }
+    }
+
+    ImGui::End();
+}
+
 void Editor::DrawProjectSettingsPanel()
 {
-    ImGui::Begin("Project Settings");
+    ImGui::Begin("Build Settings", &showBuildSettingsPanel);
 
     if (!ProjectManager::HasActiveProject())
     {
@@ -2796,49 +3569,80 @@ void Editor::DrawProjectSettingsPanel()
     }
 
     const auto& project = ProjectManager::GetActive();
+    const auto& projectScenes = ProjectManager::GetScenes();
     static std::filesystem::path cachedProjectFile;
-    static char startupSceneBuffer[260] = {};
     static char outputFolderBuffer[260] = {};
     static char runtimeIdBuffer[128] = {};
+    static std::vector<BuildSceneInfo> editableBuildScenes;
+    static std::string startupSceneId;
+    static std::size_t cachedSceneCount = 0;
 
-    if (cachedProjectFile != project.projectFile)
+    if (cachedProjectFile != project.projectFile || cachedSceneCount != projectScenes.size())
     {
         cachedProjectFile = project.projectFile;
-        std::error_code startupSceneEc;
-        const auto startupSceneRelative = std::filesystem::relative(project.startupScenePath, project.rootPath, startupSceneEc);
-        const std::string startupSceneString = startupSceneEc
-            ? project.startupScenePath.generic_string()
-            : startupSceneRelative.generic_string();
-        strncpy_s(startupSceneBuffer, startupSceneString.c_str(), sizeof(startupSceneBuffer) - 1);
+        cachedSceneCount = projectScenes.size();
         strncpy_s(outputFolderBuffer, project.buildOutputPath.generic_string().c_str(), sizeof(outputFolderBuffer) - 1);
         strncpy_s(runtimeIdBuffer, project.runtimeIdentifier.c_str(), sizeof(runtimeIdBuffer) - 1);
+        editableBuildScenes = project.buildScenes;
+        startupSceneId = project.startupSceneId;
     }
 
     ImGui::TextDisabled("Project: %s", project.name.c_str());
-    ImGui::InputText("Startup Scene", startupSceneBuffer, IM_ARRAYSIZE(startupSceneBuffer));
-    if (ImGui::Button("Use Current Scene"))
-    {
-        std::error_code currentSceneEc;
-        const auto currentSceneRelative = std::filesystem::relative(project.scenePath, project.rootPath, currentSceneEc);
-        const std::string currentSceneString = currentSceneEc
-            ? project.scenePath.generic_string()
-            : currentSceneRelative.generic_string();
-        strncpy_s(startupSceneBuffer, currentSceneString.c_str(), sizeof(startupSceneBuffer) - 1);
-    }
-
     ImGui::InputText("Build Output Folder", outputFolderBuffer, IM_ARRAYSIZE(outputFolderBuffer));
     ImGui::InputText("Runtime Identifier", runtimeIdBuffer, IM_ARRAYSIZE(runtimeIdBuffer));
+    ImGui::SeparatorText("Scenes");
+
+    auto getEditableBuildScene = [&](const std::string& sceneId) -> BuildSceneInfo&
+    {
+        for (auto& buildScene : editableBuildScenes)
+        {
+            if (buildScene.sceneId == sceneId)
+            {
+                return buildScene;
+            }
+        }
+
+        BuildSceneInfo buildScene;
+        buildScene.sceneId = sceneId;
+        buildScene.buildIndex = static_cast<int>(editableBuildScenes.size());
+        editableBuildScenes.push_back(buildScene);
+        return editableBuildScenes.back();
+    };
+
+    for (const auto& scene : projectScenes)
+    {
+        auto& buildScene = getEditableBuildScene(scene.id);
+        const auto relativeScenePath = std::filesystem::relative(scene.path, project.rootPath).generic_string();
+
+        ImGui::PushID(scene.id.c_str());
+        ImGui::Checkbox("##IncludeScene", &buildScene.included);
+        ImGui::SameLine();
+        ImGui::Text("%s", scene.name.c_str());
+        ImGui::SameLine();
+        ImGui::TextDisabled("(%s)", relativeScenePath.c_str());
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(80.0f);
+        ImGui::InputInt("Build Index", &buildScene.buildIndex);
+        if (buildScene.buildIndex < 0)
+        {
+            buildScene.buildIndex = 0;
+        }
+        ImGui::SameLine();
+        if (ImGui::RadioButton("Startup", startupSceneId == scene.id))
+        {
+            startupSceneId = scene.id;
+            buildScene.included = true;
+        }
+        ImGui::PopID();
+    }
 
     if (ImGui::Button("Save Build Settings"))
     {
-        const std::filesystem::path startupScene = std::filesystem::path(startupSceneBuffer).is_absolute()
-            ? std::filesystem::path(startupSceneBuffer)
-            : project.rootPath / startupSceneBuffer;
         const std::filesystem::path buildOutput = std::filesystem::path(outputFolderBuffer).is_absolute()
             ? std::filesystem::path(outputFolderBuffer)
             : project.rootPath / outputFolderBuffer;
 
-        ProjectManager::UpdateBuildSettings(startupScene, buildOutput, runtimeIdBuffer);
+        ProjectManager::UpdateBuildSettings(buildOutput, runtimeIdBuffer, startupSceneId, editableBuildScenes);
         cachedProjectFile.clear();
         EditorConsole::Log("[Project] Build settings updated.");
     }

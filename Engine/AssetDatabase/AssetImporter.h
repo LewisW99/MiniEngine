@@ -33,6 +33,8 @@ public:
     static bool EnsureAudioEngine();
     static ma_engine* GetAudioEngine();
     static const std::string& GetLastError();
+    static const std::vector<std::string>& GetDiagnostics();
+    static void ClearDiagnostics();
     static void ClearLastError();
     static void Shutdown();
 };

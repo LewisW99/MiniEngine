@@ -11,9 +11,33 @@ class BuildPipeline
 public:
     static void WriteRuntimeManifest(const Project& project, const std::filesystem::path& outputRoot)
     {
+        nlohmann::json buildScenes = nlohmann::json::array();
+        for (const auto& buildScene : project.buildScenes)
+        {
+            if (!buildScene.included)
+            {
+                continue;
+            }
+
+            for (const auto& scene : project.scenes)
+            {
+                if (scene.id == buildScene.sceneId)
+                {
+                    buildScenes.push_back({
+                        { "id", scene.id },
+                        { "name", scene.name },
+                        { "path", std::filesystem::relative(scene.path, project.rootPath).generic_string() },
+                        { "buildIndex", buildScene.buildIndex }
+                    });
+                    break;
+                }
+            }
+        }
+
         nlohmann::json manifest = {
             { "runtimeId", project.runtimeIdentifier },
             { "startupScene", project.startupScenePath.lexically_relative(project.rootPath).generic_string() },
+            { "buildScenes", buildScenes },
             { "assets", CollectRelativeFiles(outputRoot / "Assets", outputRoot) },
             { "scenes", CollectRelativeFiles(outputRoot / "Scenes", outputRoot) },
             { "config", CollectRelativeFiles(outputRoot / "Config", outputRoot) }

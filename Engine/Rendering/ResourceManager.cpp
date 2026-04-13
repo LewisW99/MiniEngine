@@ -5,35 +5,59 @@
 #include <filesystem>
 #include <iostream>
 #include "../AssetDatabase/AssetImporter.h"
+#include "../../Demo/Editor/Managers/ProjectManager.h"
 
 std::unordered_map<std::string, Mesh> ResourceManager::s_Meshes;
 std::unordered_map<std::string, GLuint> ResourceManager::s_Textures;
+std::unordered_set<std::string> ResourceManager::s_FailedMeshes;
 
 const Mesh* ResourceManager::LoadMesh(const std::string& path)
 {
     const std::string key = NormalizePath(path);
+    if (const auto failed = s_FailedMeshes.find(key); failed != s_FailedMeshes.end())
+    {
+        return nullptr;
+    }
+
     if (const auto it = s_Meshes.find(key); it != s_Meshes.end())
     {
         return &it->second;
     }
 
-    MeshData meshData = key == "builtin://cube"
+    const MeshData meshData = key == "builtin://cube"
         ? CreateBuiltinCube()
         : AssetImporter::ImportModel(key);
 
     if (!meshData.IsValid())
     {
-        if (key != "builtin://cube")
+        if (key == "builtin://cube")
         {
-            std::cerr << "[ResourceManager] Falling back to builtin cube for mesh: " << key << "\n";
-            return LoadMesh("builtin://cube");
+            std::cerr << "[ResourceManager] Failed to create builtin cube mesh.\n";
+        }
+        else
+        {
+            std::cerr << "[ResourceManager] Failed to load mesh resource: " << key;
+            if (!AssetImporter::GetLastError().empty())
+            {
+                std::cerr << " | " << AssetImporter::GetLastError();
+            }
+            std::cerr << "\n";
         }
 
+        s_FailedMeshes.insert(key);
         return nullptr;
     }
 
     auto [it, inserted] = s_Meshes.emplace(key, UploadMesh(meshData));
-    return inserted ? &it->second : nullptr;
+    if (!inserted || !it->second.IsValid())
+    {
+        std::cerr << "[ResourceManager] Failed to upload mesh resource: " << key << "\n";
+        s_FailedMeshes.insert(key);
+        return nullptr;
+    }
+
+    s_FailedMeshes.erase(key);
+    return &it->second;
 }
 
 const Mesh* ResourceManager::GetMesh(const std::string& path)
@@ -123,6 +147,7 @@ void ResourceManager::Clear()
         }
     }
     s_Meshes.clear();
+    s_FailedMeshes.clear();
 
     for (auto& [path, texture] : s_Textures)
     {
@@ -146,9 +171,23 @@ std::string ResourceManager::NormalizePath(const std::string& path)
         return path;
     }
 
+    std::filesystem::path resolvedPath(path);
+    if (!resolvedPath.is_absolute())
+    {
+        if (ProjectManager::HasActiveProject())
+        {
+            resolvedPath = ProjectManager::GetActive().rootPath / resolvedPath;
+        }
+        else
+        {
+            std::error_code currentPathEc;
+            resolvedPath = std::filesystem::current_path(currentPathEc) / resolvedPath;
+        }
+    }
+
     std::error_code ec;
-    const auto absolutePath = std::filesystem::absolute(path, ec);
-    return ec ? path : absolutePath.string();
+    const auto canonicalPath = std::filesystem::weakly_canonical(resolvedPath, ec);
+    return ec ? resolvedPath.lexically_normal().generic_string() : canonicalPath.generic_string();
 }
 
 MeshData ResourceManager::CreateBuiltinCube()

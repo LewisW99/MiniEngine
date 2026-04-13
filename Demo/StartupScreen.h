@@ -6,6 +6,7 @@ struct StartupResult
 {
     bool projectChosen = false;
     std::filesystem::path projectPath;
+    std::string initialSceneName = "Main";
 
     bool loadFailed = false;
 };

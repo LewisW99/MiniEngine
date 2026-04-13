@@ -1,9 +1,0 @@
-{
-    "assetDir": "Assets",
-    "configDir": "Config",
-    "engine": "MiniEngine",
-    "engineVersion": "0.1.0",
-    "name": "FreshProject",
-    "sceneDir": "Scenes",
-    "startupScene": "Scenes/Main.scene"
-}

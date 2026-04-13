@@ -131,6 +131,7 @@ StartupResult StartupScreen::Draw()
 
     // ---------------- New Project Modal ----------------
     static char projectName[128] = "";
+    static char sceneName[128] = "Main";
     static std::filesystem::path projectLocation;
 
     if (ImGui::BeginPopupModal("New Project", nullptr,
@@ -140,6 +141,7 @@ StartupResult StartupScreen::Draw()
         ImGui::Separator();
 
         ImGui::InputText("Project Name", projectName, IM_ARRAYSIZE(projectName));
+        ImGui::InputText("Startup Scene", sceneName, IM_ARRAYSIZE(sceneName));
 
         ImGui::Text("Location:");
         ImGui::SameLine();
@@ -160,6 +162,7 @@ StartupResult StartupScreen::Draw()
 
         bool canCreate =
             strlen(projectName) > 0 &&
+            strlen(sceneName) > 0 &&
             !projectLocation.empty();
 
         if (!canCreate)
@@ -169,9 +172,11 @@ StartupResult StartupScreen::Draw()
         {
             result.projectChosen = true;
             result.projectPath = projectLocation / projectName;
+            result.initialSceneName = sceneName;
 
             // Reset state
             projectName[0] = '\0';
+            strcpy_s(sceneName, "Main");
             projectLocation.clear();
 
             ImGui::CloseCurrentPopup();
@@ -185,6 +190,7 @@ StartupResult StartupScreen::Draw()
         if (ImGui::Button("Cancel", { 120, 0 }))
         {
             projectName[0] = '\0';
+            strcpy_s(sceneName, "Main");
             projectLocation.clear();
             ImGui::CloseCurrentPopup();
         }
